@@ -1,0 +1,2 @@
+exe/ippusbxd usr/sbin/
+src/apparmor/usr.sbin.ippusbxd etc/apparmor.d/
