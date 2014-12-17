@@ -21,8 +21,7 @@ Conflicts: cups-filters-ippusbxd
 Provides: cups-filters-ippusbxd
 Recommends: system-config-printer-udev
 Enhances: cups
-Description: Daemon for IPP-over-USB printer support
- This package provides ippusbxd, a daemon which lets IPP-over-USB
- printers appear as regular network IPP printers and so one can prints
- on them with CUPS ("ipp" backend) and access the configuration web
- interface with any browser.
+Description:  Daemon for IPP USB printer support
+ ippusbxd is a userland driver for USB devices supporting the IPP USB
+ specification. It enables these USB printers to be seen as regular
+ network IPP printers.
