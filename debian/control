@@ -1,7 +1,8 @@
 Source: ippusbxd
 Section: comm
 Priority: extra
-Maintainer: Didier 'OdyX' Raboud <odyx@debian.org>
+Maintainer: Debian Printing Team <debian-printing@lists.debian.org>
+Uploaders: Didier 'OdyX' Raboud <odyx@debian.org>
 Build-Depends: debhelper (>= 9),
  libusb-1.0-0-dev,
  cmake,
