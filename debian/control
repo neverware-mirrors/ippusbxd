@@ -6,6 +6,7 @@ Uploaders: Didier 'OdyX' Raboud <odyx@debian.org>
 Build-Depends: debhelper (>= 9),
  libusb-1.0-0-dev,
  cmake,
+ dh-apparmor,
 Standards-Version: 3.9.5
 Homepage: https://github.com/daniel-dressler/ippusbxd
 Vcs-Git: https://anonscm.debian.org/git/printing/ippusbxd.git
