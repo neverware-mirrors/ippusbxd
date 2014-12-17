@@ -7,7 +7,7 @@ Build-Depends: debhelper (>= 9),
  libusb-1.0-0-dev,
  cmake,
  dh-apparmor,
-Standards-Version: 3.9.5
+Standards-Version: 3.9.6
 Homepage: https://github.com/daniel-dressler/ippusbxd
 Vcs-Git: https://anonscm.debian.org/git/printing/ippusbxd.git
 Vcs-Browser: http://anonscm.debian.org/cgit/printing/ippusbxd.git
