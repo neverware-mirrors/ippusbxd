@@ -1,5 +1,5 @@
-ippusbxd (1.21.2-1) UNRELEASED; urgency=medium
+ippusbxd (1.21.2-1) unstable; urgency=medium
 
   * Initial release. (Closes: #773356)
 
- -- Didier Raboud <odyx@debian.org>  Mon, 13 Oct 2014 09:34:43 +0200
+ -- Didier Raboud <odyx@debian.org>  Wed, 11 Feb 2015 11:01:47 +0100
