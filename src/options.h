@@ -23,12 +23,14 @@ enum log_target {
 struct options {
 	// Runtime configuration
 	uint16_t desired_port;
+	int only_desired_port;
 	enum log_target log_destination;
 
 	// Behavior
 	int help_mode;
 	int verbose_mode;
 	int nofork_mode;
+        int noprinter_mode;
 
 	// Printer indentity
 	unsigned char *serial_num;
