@@ -1,3 +1,15 @@
+ippusbxd (1.22-1) unstable; urgency=medium
+
+  * New 1.22 upstream release
+    - SECURITY FIX: Actually restrict the access to the printer to localhost
+      (Closes: #795162, LP: #1455644)
+
+  * Drop the aquire→acquire typo patch, merged upstream
+  * Add gbp.conf
+  * Update Vcs-Browser to use the https variant
+
+ -- Didier Raboud <odyx@debian.org>  Thu, 13 Aug 2015 09:07:51 +0200
+
 ippusbxd (1.21.2-1) unstable; urgency=medium
 
   * Initial release. (Closes: #773356)
