@@ -31,6 +31,7 @@ struct service_thread_param {
 	struct usb_sock_t *usb_sock;
 	pthread_t thread_handle;
 };
+
 static void *service_connection(void *arg_void)
 {
 	struct service_thread_param *arg =
@@ -73,7 +74,7 @@ static void *service_connection(void *arg_void)
 				     usb->interface_index);
 			}
 
-			NOTE("M %p P %p: Pkt from tcp (buffer size: %d)\n===\n%.*s\n===", client_msg, pkt, pkt->filled_size, (int)pkt->filled_size, pkt->buffer);
+			NOTE("M %p P %p: Pkt from tcp (buffer size: %d)\n===\n%s===", client_msg, pkt, pkt->filled_size, hexdump(pkt->buffer, (int)pkt->filled_size));
 			// In no-printer mode we simply ignore passing the
 			// client message on to the printer
 			if (arg->usb_sock != NULL) {
@@ -124,9 +125,9 @@ static void *service_connection(void *arg_void)
 				arg->tcp->is_closed = 1;
 			}
 
-			NOTE("M %p P %p: Pkt from usb (buffer size: %d)\n===\n%.*s\n===",
+			NOTE("M %p P %p: Pkt from usb (buffer size: %d)\n===\n%s===",
 			     server_msg, pkt, pkt->filled_size,
-			     (int)pkt->filled_size, pkt->buffer);
+			     hexdump(pkt->buffer, (int)pkt->filled_size));
 			tcp_packet_send(arg->tcp, pkt);
 			if (usb != NULL)
 				NOTE("M %p P %p: Interface #%d: Server pkt done",
