@@ -1,3 +1,12 @@
+ippusbxd (1.23-1) unstable; urgency=medium
+
+  * New 1.23 upstream release
+    - ippusbxd now actually terminates when disconnecting the printer.
+    - The content of the communication between printer and client is now
+      logged as hex dump.
+
+ -- Didier Raboud <odyx@debian.org>  Sat, 19 Sep 2015 14:09:47 +0200
+
 ippusbxd (1.22-1) unstable; urgency=medium
 
   * New 1.22 upstream release
