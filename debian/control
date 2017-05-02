@@ -5,6 +5,8 @@ Maintainer: Debian Printing Team <debian-printing@lists.debian.org>
 Uploaders: Didier Raboud <odyx@debian.org>
 Build-Depends: debhelper (>= 9),
  libusb-1.0-0-dev,
+ libavahi-common-dev,
+ libavahi-client-dev,
  cmake,
  pkg-config,
  dh-apparmor,
