@@ -29,18 +29,18 @@
 #define BUFFER_MAX (1 << 20)
 
 struct tcp_sock_t {
-	int sd;
-	struct sockaddr_in6 info;
-	socklen_t info_size;
+  int sd;
+  struct sockaddr_in6 info;
+  socklen_t info_size;
 };
 
 struct tcp_conn_t {
-	int sd;
-	int is_closed;
+  int sd;
+  int is_closed;
 };
 
-struct tcp_sock_t *tcp_open(uint16_t);
-struct tcp_sock_t *tcp6_open(uint16_t);
+struct tcp_sock_t *tcp_open(uint16_t, char* interface);
+struct tcp_sock_t *tcp6_open(uint16_t, char* interface);
 void tcp_close(struct tcp_sock_t *);
 uint16_t tcp_port_number_get(struct tcp_sock_t *);
 
@@ -50,4 +50,4 @@ void tcp_conn_close(struct tcp_conn_t *);
 
 struct http_packet_t *tcp_packet_get(struct tcp_conn_t *,
                                      struct http_message_t *);
-void tcp_packet_send(struct tcp_conn_t *, struct http_packet_t *);
+int tcp_packet_send(struct tcp_conn_t *, struct http_packet_t *);

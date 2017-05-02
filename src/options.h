@@ -14,28 +14,44 @@
 
 #pragma once
 #include <stdint.h>
+#include <pthread.h>
+
+#include "dnssd.h"
 
 enum log_target {
-	LOGGING_STDERR,
-	LOGGING_SYSLOG
+  LOGGING_STDERR,
+  LOGGING_SYSLOG
 };
 
 struct options {
-	// Runtime configuration
-	uint16_t desired_port;
-	int only_desired_port;
-	enum log_target log_destination;
+  /* Runtime configuration */
+  uint16_t desired_port;
+  int only_desired_port;
+  uint16_t real_port;
+  char *interface;
+  enum log_target log_destination;
 
-	// Behavior
-	int help_mode;
-	int verbose_mode;
-	int nofork_mode;
-        int noprinter_mode;
+  /* Behavior */
+  int help_mode;
+  int verbose_mode;
+  int nofork_mode;
+  int noprinter_mode;
+  int nobroadcast;
 
-	// Printer indentity
-	unsigned char *serial_num;
-	int vendor_id;
-	int product_id;
+  /* Printer identity */
+  unsigned char *serial_num;
+  int vendor_id;
+  int product_id;
+  int bus;
+  int device;
+  char *device_id;
+
+  /* Global variables */
+  int terminate;
+  dnssd_t *dnssd_data;
+  pthread_t usb_event_thread_handle;
+  struct tcp_sock_t *tcp_socket;
+  struct tcp_sock_t *tcp6_socket;
 };
 
 extern struct options g_options;
