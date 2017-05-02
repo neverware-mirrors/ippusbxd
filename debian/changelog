@@ -1,3 +1,13 @@
+ippusbxd (1.30-1) experimental; urgency=low
+
+  * New 1.30 upstream release
+  * Bump S-V to 3.9.8 without changes needed
+  * ippusbxd manpage moved to section 8
+  * Install the udev rules, and put the systemd services in examples
+  * Add libavahi-{client,common}-dev as B-D
+
+ -- Didier Raboud <odyx@debian.org>  Tue, 02 May 2017 10:19:58 +0200
+
 ippusbxd (1.23-1) unstable; urgency=medium
 
   * New 1.23 upstream release
