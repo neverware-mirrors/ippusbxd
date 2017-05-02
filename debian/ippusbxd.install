@@ -1,2 +1,3 @@
 exe/ippusbxd usr/sbin/
 src/apparmor/usr.sbin.ippusbxd etc/apparmor.d/
+systemd-udev/55-ippusbxd.rules lib/udev/rules.d/
