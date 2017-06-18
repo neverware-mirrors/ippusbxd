@@ -1,3 +1,9 @@
+ippusbxd (1.30-2) unstable; urgency=low
+
+  * Migrate 1.30 to unstable
+
+ -- Didier Raboud <odyx@debian.org>  Sun, 18 Jun 2017 17:41:02 +0200
+
 ippusbxd (1.30-1) experimental; urgency=low
 
   * New 1.30 upstream release
