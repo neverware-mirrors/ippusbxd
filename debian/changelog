@@ -1,3 +1,11 @@
+ippusbxd (1.31-1) unstable; urgency=medium
+
+  * New 1.31 upstream release
+  * Bump S-V to 4.1.1 without changes needed
+  * Update homepage URL to point to the new OpenPrinting GitHub repository
+
+ -- Didier Raboud <odyx@debian.org>  Tue, 10 Oct 2017 09:25:04 +0200
+
 ippusbxd (1.30-2) unstable; urgency=low
 
   * Migrate 1.30 to unstable
