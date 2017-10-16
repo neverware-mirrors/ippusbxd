@@ -187,6 +187,18 @@ enough). It is possible that the advertising of the printer stops if
 the loopback interface is the only network interface running due to
 lack of a multicast-capable interface.
 
+To make this universally work and also to make the DNS-SD record
+correctly use "localhost" as host name and not the machine's network
+host name, further changes on Avahi are needed. See
+
+https://github.com/lathiat/avahi/issues/125
+
+With this done, we have a completely standard-conforming support for
+IPP-over-USB. For the time being we have to take this into account in
+automated printer setup processes and in printer setup
+tools. cups-browsed for example uses the numeric IP if it is a local
+(127.X.Y.Z) one.
+
 Now we can restart systemd and UDEV to activate all this:
 
 ```
