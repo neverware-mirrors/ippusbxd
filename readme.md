@@ -73,17 +73,20 @@ also if the printer is not on the network but connected via USB.
 Therefore we can assume that all IPP-over-USB printers support
 driverless printing.
 
-A remark to driverless printing: There are two very similar standards:
-AirPrint, a proprietary standard from Apple and IPP Everywhere, an
-open standard of the Printer Working Group (PWG, http://www.pwg.org/).
-Both use the same methods of DNS-SD broadcasting of network printers,
+A remark to driverless printing: There are several very similar
+standards: AirPrint, a proprietary standard from Apple and IPP
+Everywhere, an open standard of the Printer Working Group (PWG,
+http://www.pwg.org/), and also Mopria and Wi-Fi Direct. They all use
+the same methods of DNS-SD broadcasting of network printers,
 IPP-over-USB via the USB interface class 7, subclass 1, protocol 4,
 and IPP 2.0 with all its attributes for querying of capabilities,
 sending jobs with options as IPP attributes, and monitoring the status
 of the printer. The only difference is that IPP Everywhere uses PWG
-Raster as its raster data format and AirPrint uses Apple Raster. Even
-these raster formats are very similar. Therefore CUPS and CUPS filters
-simply support both methods.
+Raster as its raster data format, AirPrint uses Apple Raster, and
+Mopria and Wi-Fi Direct use PWG Raster or PCLm. All standards also
+support PDF as page description language. Even the PWG and Apple
+Raster formats are very similar. Therefore CUPS and CUPS filters
+simply support all methods.
 
 Note that these instructions and the sample files are tested on
 Ubuntu. On other distributions there are perhaps some changes needed,
@@ -94,14 +97,14 @@ There are two methods to install ippusbxd, one exposing the printer
 on localhost. and one exposing the printer on the dummy0 interface.
 
 Exposing the printer on localhost is the way how the IPP-over-USB
-standard is intended and therefore this how it is intended to proceed
-on production system and especially on Linux distributions.
+standard is intended and therefore this is how it is intended to
+proceed on production systems and especially on Linux distributions.
 Disadvantage of this method is that Avahi needs to be modified so that
 it advertises services on localhost and these only on the local
 machine.
 
 Exposing the printer on the dummy0 interface does not require any
-changes on Avahi, but it is more awkward to set up the syetm and to
+changes on Avahi, but it is more awkward to set up the system and to
 access the printer and its web administration interface.
 
 ### 1. Expose the printer on localhost
@@ -131,11 +134,12 @@ minutes. Out of UDEV rules you can only start programs which do not
 need to keep running permanently, like daemons. Therefore we use
 systemd here.
 
-Apply the following patch to the source code of Avahi:
+Apply the following patch to the source code of Avahi (tested with
+version 0.6.32):
 
 ```
---- avahi-core/iface-linux.c~	2016-02-09 04:12:59.295979998 -0200
-+++ avahi-core/iface-linux.c	2017-04-13 11:25:52.103355254 -0300
+--- avahi-core/iface-linux.c~
++++ avahi-core/iface-linux.c
 @@ -104,8 +104,8 @@
          hw->flags_ok =
              (ifinfomsg->ifi_flags & IFF_UP) &&
@@ -147,8 +151,8 @@ Apply the following patch to the source code of Avahi:
              (m->server->config.allow_point_to_point || !(ifinfomsg->ifi_flags & IFF_POINTOPOINT));
  
          /* Handle interface attributes */
---- avahi-core/iface-pfroute.c~	2015-04-01 01:58:14.149727123 -0300
-+++ avahi-core/iface-pfroute.c	2017-04-13 11:28:47.547016465 -0300
+--- avahi-core/iface-pfroute.c~
++++ avahi-core/iface-pfroute.c
 @@ -80,8 +80,8 @@
    hw->flags_ok =
      (ifm->ifm_flags & IFF_UP) &&
@@ -171,6 +175,25 @@ Apply the following patch to the source code of Avahi:
              (m->server->config.allow_point_to_point || !(flags & IFF_POINTOPOINT));
          hw->name = avahi_strdup(lifreq->lifr_name);
          hw->mtu = mtu;
+--- avahi-core/resolve-service.c~
++++ avahi-core/resolve-service.c
+@@ -24,6 +24,7 @@
+ #include <string.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <net/if.h>
+ 
+ #include <avahi-common/domain.h>
+ #include <avahi-common/timeval.h>
+@@ -129,7 +130,7 @@
+                 r->service_name,
+                 r->service_type,
+                 r->domain_name,
+-                r->srv_record->data.srv.name,
++                (r->interface == if_nametoindex("lo")) ? "localhost" : r->srv_record->data.srv.name,
+                 r->address_record ? &a : NULL,
+                 r->srv_record->data.srv.port,
+                 r->txt_record ? r->txt_record->data.txt.string_list : NULL,
 ```
 
 Build and install Avahi. This makes Avahi not only advertising
@@ -187,9 +210,8 @@ enough). It is possible that the advertising of the printer stops if
 the loopback interface is the only network interface running due to
 lack of a multicast-capable interface.
 
-To make this universally work and also to make the DNS-SD record
-correctly use "localhost" as host name and not the machine's network
-host name, further changes on Avahi are needed. See
+The patch above is already submitted upstream and also the problem
+with network-less machines is reported. See
 
 https://github.com/lathiat/avahi/issues/125
 
@@ -232,7 +254,8 @@ lpadmin -p printer -E -v ipp://localhost:60000/ipp/print -meverywhere
 The "-meverywhere" makes CUPS auto-generate the PPD file for the
 printer, based on an IPP query of the printer's capabilities,
 independent whether the printer is an IPP Everywhere printer or an
-AirPrint printer.
+AirPrint printer. This method does not support PCLm-only printers, but
+the methods described below do.
 
 To create a print queue with the web interface of CUPS
 (`http://localhost:631/`), look for your printer under the discovered
@@ -369,7 +392,8 @@ lpadmin -p printer -E -v ipp://10.0.0.1:60000/ipp/print -meverywhere
 The "-meverywhere" makes CUPS auto-generate the PPD file for the
 printer, based on an IPP query of the printer's capabilities,
 independent whether the printer is an IPP Everywhere printer or an
-AirPrint printer.
+AirPrint printer. This method does not support PCLm-only printers, but
+the methods described below do.
 
 To create a print queue with the web interface of CUPS
 (`http://localhost:631/`), look for your printer under the discovered
