@@ -32,7 +32,7 @@ void BASE_LOG(enum log_level level, const char *fmt, ...)
   if (g_options.log_destination == LOGGING_STDERR)
     vfprintf(stderr, fmt, arg);
   else if (g_options.log_destination == LOGGING_SYSLOG)
-    syslog(LOG_ERR, fmt, arg);
+    vsyslog(LOG_ERR, fmt, arg);
   va_end(arg);
 }
 
