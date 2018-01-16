@@ -35,7 +35,7 @@ void BASE_LOG(enum log_level level, const char *fmt, ...)
     vfprintf(stderr, fmt, arg);
   else if (g_options.log_destination == LOGGING_SYSLOG) {
     vsnprintf(buf, sizeof(buf), fmt, arg);
-    syslog(LOG_ERR, buf);
+    syslog(LOG_ERR, "%s", buf);
   }
   va_end(arg);
 }
