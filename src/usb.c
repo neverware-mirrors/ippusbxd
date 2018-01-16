@@ -211,23 +211,17 @@ struct usb_sock_t *usb_open()
   if (auto_pick)
     NOTE("Searching for first IPP-over-USB-capable device available");
 
+  struct libusb_device_descriptor desc;
   for (ssize_t i = 0; i < device_count; i++) {
     libusb_device *candidate = device_list[i];
-    struct libusb_device_descriptor desc;
     libusb_get_device_descriptor(candidate, &desc);
 
     if (!is_our_device(candidate, desc))
       continue;
 
-    /* Save VID/PID for exit-on-unplug */
-    if (g_options.vendor_id == 0)
-      g_options.vendor_id = desc.idVendor;
-    if (g_options.product_id == 0)
-      g_options.product_id = desc.idProduct;
-
     bus = libusb_get_bus_number(candidate);
     dev_addr = libusb_get_device_address(candidate);
-    NOTE("Printer connected on bus %03d device %03d",
+    NOTE("Device connected on bus %03d device %03d",
 	 bus, dev_addr);
 
     for (uint8_t config_num = 0;
@@ -266,6 +260,12 @@ struct usb_sock_t *usb_open()
     }
   }
  found_device:
+
+  /* Save VID/PID for exit-on-unplug */
+  if (g_options.vendor_id == 0)
+    g_options.vendor_id = desc.idVendor;
+  if (g_options.product_id == 0)
+    g_options.product_id = desc.idProduct;
 
   if (printer_device == NULL) {
     if (!auto_pick) {
