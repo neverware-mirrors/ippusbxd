@@ -44,6 +44,7 @@ dnssd_callback(AvahiEntryGroup      *g,		/* I - Service */
     break;
   case AVAHI_ENTRY_GROUP_COLLISION :
     ERR("DNS-SD service name for this printer already exists");
+    break;
   case AVAHI_ENTRY_GROUP_FAILURE :
     ERR("Entry group failure: %s\n",
 	avahi_strerror(avahi_client_errno(avahi_entry_group_get_client(g))));
