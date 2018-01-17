@@ -135,7 +135,7 @@ need to keep running permanently, like daemons. Therefore we use
 systemd here.
 
 Apply the following patch to the source code of Avahi (tested with
-version 0.6.32):
+version 0.6.32 and 0.7):
 
 ```
 --- avahi-core/iface-linux.c~
