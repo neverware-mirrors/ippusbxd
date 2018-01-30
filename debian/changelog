@@ -1,3 +1,12 @@
+ippusbxd (1.32-1) unstable; urgency=medium
+
+  * New 1.32 upstream release
+  * Set Priority to optional as extra is deprecated
+  * Bump S-V to 4.1.3 without other changes needed
+  * Set hardening=+all through DEB_BUILD_MAINT_OPTIONS
+
+ -- Didier Raboud <odyx@debian.org>  Tue, 30 Jan 2018 07:40:07 +0100
+
 ippusbxd (1.31-1) unstable; urgency=medium
 
   * New 1.31 upstream release
