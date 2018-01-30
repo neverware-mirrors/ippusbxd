@@ -543,7 +543,8 @@ int main(int argc, char *argv[])
     {NULL,           0,                 0,  0   }
   };
   g_options.log_destination = LOGGING_STDERR;
-  g_options.only_desired_port = 1;
+  g_options.only_desired_port = 0;
+  g_options.desired_port = 60000;
   g_options.interface = "lo";
   g_options.serial_num = NULL;
   g_options.vendor_id = 0;
@@ -577,7 +578,7 @@ int main(int argc, char *argv[])
 	if (c == 'p')
 	  g_options.only_desired_port = 1;
 	else
-			  g_options.only_desired_port = 0;
+	  g_options.only_desired_port = 0;
 	break;
       }
     case 'i':

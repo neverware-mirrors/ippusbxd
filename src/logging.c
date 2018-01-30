@@ -24,6 +24,8 @@
 
 void BASE_LOG(enum log_level level, const char *fmt, ...)
 {
+  char buf[65536];
+
   if (!g_options.verbose_mode && level != LOGGING_ERROR)
     return;
 
@@ -31,8 +33,10 @@ void BASE_LOG(enum log_level level, const char *fmt, ...)
   va_start(arg, fmt);
   if (g_options.log_destination == LOGGING_STDERR)
     vfprintf(stderr, fmt, arg);
-  else if (g_options.log_destination == LOGGING_SYSLOG)
-    syslog(LOG_ERR, fmt, arg);
+  else if (g_options.log_destination == LOGGING_SYSLOG) {
+    vsnprintf(buf, sizeof(buf), fmt, arg);
+    syslog(LOG_ERR, "%s", buf);
+  }
   va_end(arg);
 }
 

@@ -44,6 +44,7 @@ dnssd_callback(AvahiEntryGroup      *g,		/* I - Service */
     break;
   case AVAHI_ENTRY_GROUP_COLLISION :
     ERR("DNS-SD service name for this printer already exists");
+    break;
   case AVAHI_ENTRY_GROUP_FAILURE :
     ERR("Entry group failure: %s\n",
 	avahi_strerror(avahi_client_errno(avahi_entry_group_get_client(g))));
@@ -196,11 +197,15 @@ dnssd_register(AvahiClient *c)
   const char      *model;               /* I - Model name */
   const char      *serial = NULL;
   const char      *cmd;
+  const char      *urf = NULL;
   int             pwgraster = 0,
                   appleraster = 0,
                   pclm = 0,
                   pdf = 0,
                   jpeg = 0;
+  char            has_duplex = 'U',
+                  has_color = 'U',
+                  has_copies = 'U';
   char            formats[1024];        /* I - Supported formats */
   char            *ptr;
   int             error;
@@ -232,6 +237,10 @@ dnssd_register(AvahiClient *c)
     }
   if (ptr)
     serial = strchr(ptr, ':') + 1;
+  if ((ptr = strcasestr(dev_id, "URF:")) == NULL)
+    NOTE("No URF info in device ID");
+  if (ptr)
+    urf = strchr(ptr, ':') + 1;
   if ((ptr = strcasestr(dev_id, "CMD:")) == NULL)
     if ((ptr = strcasestr(dev_id, "COMMAND SET:")) == NULL) {
       ERR("No page description language info in device ID");
@@ -249,13 +258,18 @@ dnssd_register(AvahiClient *c)
   }
   ptr = strchr(cmd, ';');
   if (ptr) *ptr = '\0';
+  if (urf) {
+    ptr = strchr(urf, ';');
+    if (ptr) *ptr = '\0';
+  }
 
   if ((ptr = strcasestr(cmd, "pwg")) != NULL &&
       (ptr = strcasestr(ptr, "raster")) != NULL)
     pwgraster = 1;
   if (((ptr = strcasestr(cmd, "apple")) != NULL &&
        (ptr = strcasestr(ptr, "raster")) != NULL) ||
-      ((ptr = strcasestr(cmd, "urf")) != NULL))
+      ((ptr = strcasestr(cmd, "urf")) != NULL) ||
+      urf != NULL)
     appleraster = 1;
   if ((ptr = strcasestr(cmd, "pclm")) != NULL)
     pclm = 1;
@@ -271,6 +285,26 @@ dnssd_register(AvahiClient *c)
 	   (pclm ? "application/PCLm," : ""),
 	   (jpeg ? "image/jpeg," : ""));
   formats[strlen(formats) - 1] = '\0';
+  if (urf) {
+    if ((ptr = strcasestr(urf, "DM")) != NULL &&
+	*(ptr + 2) >= '1' && *(ptr + 2) <= '4')
+      has_duplex = 'T';
+    else
+      has_duplex = 'F';
+    if ((ptr = strcasestr(urf, "CP")) != NULL) {
+      ptr += 2;
+      if ((*ptr >= '2' && *ptr <= '9') ||
+	  (*ptr == '1' && *(ptr + 1) >= '0' && *(ptr + 1) <= '9'))
+	has_copies = 'T';
+      else
+	has_copies = 'F';
+    } else
+      has_copies = 'F';
+    if ((ptr = strcasestr(urf, "RGB")) != NULL)
+      has_color = 'T';
+    else
+      has_color = 'F';
+  }
 
  /*
   * Additional printer properties
@@ -293,12 +327,15 @@ dnssd_register(AvahiClient *c)
     ipp_txt = avahi_string_list_add_printf(ipp_txt, "adminurl=%s", temp);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "product=(%s)", model);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "pdl=%s", formats);
-  ipp_txt = avahi_string_list_add_printf(ipp_txt, "Color=U");
-  ipp_txt = avahi_string_list_add_printf(ipp_txt, "Duplex=U");
+  ipp_txt = avahi_string_list_add_printf(ipp_txt, "Color=%c", has_color);
+  ipp_txt = avahi_string_list_add_printf(ipp_txt, "Duplex=%c", has_duplex);
+  ipp_txt = avahi_string_list_add_printf(ipp_txt, "Copies=%c", has_copies);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "usb_MFG=%s", make);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "usb_MDL=%s", model);
-  if (appleraster)
-    ipp_txt = avahi_string_list_add_printf(ipp_txt, "URF=CP1,IS1-5-7,MT1-2-3-4-5-6-8-9-10-11-12-13,RS300,SRGB24,V1.4,W8,DM1");
+  if (urf)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "URF=%s", urf);
+  else if (appleraster)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "URF=CP1,IS1,MT1,RS300,SRGB24,W8");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "priority=60");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "txtvers=1");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "qtotal=1");

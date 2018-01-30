@@ -2,8 +2,8 @@
 
 Version 1.31
 
-About
-=======
+## About
+
 IPPUSBXD is a userland driver for IPP-over-USB class USB devices. It has been
 designed for Linux but uses a cross platform usb library allowing eventual
 porting to Windows and other non-POSIX platforms.
@@ -29,29 +29,31 @@ RAM. This gives ippusbxd a minimal ram footprint.
 7. Near zero CPU usage while idle
 8. Low CPU usage while working
 
-Building
-=======
+## Building
 
 To build ippusbxd you must have the development headers of libusb 1.0,
 libavahi-common, and libavahi-client installed along with cmake.
 
 Under Ubuntu and Debian:
-  sudo apt-get install libusb-1.0-0-dev libavahi-common-dev libavahi-client-dev cmake
+```
+sudo apt-get install libusb-1.0-0-dev libavahi-common-dev libavahi-client-dev cmake
+```
 
 Under Fedora:
-  sudo yum install libusbx-devel.* cmake
-
-  Install also the *-devel packages of libavahi-common and libavahi-client
+```
+sudo yum install libusbx-devel.* cmake
+```
+Install also the *-devel packages of libavahi-common and libavahi-client
 
 Once the dependencies are installed simply run:
-  make
-
+```
+make
+```
 That will run a makefile which will in turn run cmake. This makefile
 also supports several GNU-style make commands such as clean, and
 redep.
 
-Installation on a system with systemd, UDEV, and cups-filters
-=======
+## Installation on a system with systemd, UDEV, and cups-filters
 
 Most systems nowadays use systemd for starting up all system services
 (instead of System V "init", as PID 1), UDEV to automatically set up
@@ -71,17 +73,20 @@ also if the printer is not on the network but connected via USB.
 Therefore we can assume that all IPP-over-USB printers support
 driverless printing.
 
-A remark to driverless printing: There are two very similar standards:
-AirPrint, a proprietary standard from Apple and IPP Everywhere, an
-open standard of the Printer Working Group (PWG, http://www.pwg.org/).
-Both use the same methods of DNS-SD broadcasting of network printers,
+A remark to driverless printing: There are several very similar
+standards: AirPrint, a proprietary standard from Apple and IPP
+Everywhere, an open standard of the Printer Working Group (PWG,
+http://www.pwg.org/), and also Mopria and Wi-Fi Direct. They all use
+the same methods of DNS-SD broadcasting of network printers,
 IPP-over-USB via the USB interface class 7, subclass 1, protocol 4,
 and IPP 2.0 with all its attributes for querying of capabilities,
 sending jobs with options as IPP attributes, and monitoring the status
 of the printer. The only difference is that IPP Everywhere uses PWG
-Raster as its raster data format and AirPrint uses Apple Raster. Even
-these raster formats are very similar. Therefore CUPS and CUPS filters
-simply support both methods.
+Raster as its raster data format, AirPrint uses Apple Raster, and
+Mopria and Wi-Fi Direct use PWG Raster or PCLm. All standards also
+support PDF as page description language. Even the PWG and Apple
+Raster formats are very similar. Therefore CUPS and CUPS filters
+simply support all methods.
 
 Note that these instructions and the sample files are tested on
 Ubuntu. On other distributions there are perhaps some changes needed,
@@ -92,30 +97,33 @@ There are two methods to install ippusbxd, one exposing the printer
 on localhost. and one exposing the printer on the dummy0 interface.
 
 Exposing the printer on localhost is the way how the IPP-over-USB
-standard is intended and therefore this how it is intended to proceed
-on production system and especially on Linux distributions.
+standard is intended and therefore this is how it is intended to
+proceed on production systems and especially on Linux distributions.
 Disadvantage of this method is that Avahi needs to be modified so that
 it advertises services on localhost and these only on the local
 machine.
 
 Exposing the printer on the dummy0 interface does not require any
-changes on Avahi, but it is more awkward to set up the syetm and to
+changes on Avahi, but it is more awkward to set up the system and to
 access the printer and its web administration interface.
 
-1. Expose the printer on localhost
-----------------------------------
+### 1. Expose the printer on localhost
 
 First, install ippusbxd:
 
+```
 sudo cp exe/ippusbxd /usr/sbin
+```
 
 Make sure that this file is owned by root and world-readable and
 -executable.
 
 Now install the files to manage the automatic start of ippusbxd:
 
+```
 sudo cp systemd-udev/55-ippusbxd.rules /lib/udev/rules.d/
 sudo cp systemd-udev/ippusbxd@.service /lib/systemd/system/
+```
 
 Make sure that they are owned by root and world-readable.
 
@@ -126,11 +134,12 @@ minutes. Out of UDEV rules you can only start programs which do not
 need to keep running permanently, like daemons. Therefore we use
 systemd here.
 
-Apply the following patch to the source code of Avahi:
+Apply the following patch to the source code of Avahi (tested with
+version 0.6.32 and 0.7):
 
-----------
---- avahi-core/iface-linux.c~	2016-02-09 04:12:59.295979998 -0200
-+++ avahi-core/iface-linux.c	2017-04-13 11:25:52.103355254 -0300
+```
+--- avahi-core/iface-linux.c~
++++ avahi-core/iface-linux.c
 @@ -104,8 +104,8 @@
          hw->flags_ok =
              (ifinfomsg->ifi_flags & IFF_UP) &&
@@ -142,8 +151,8 @@ Apply the following patch to the source code of Avahi:
              (m->server->config.allow_point_to_point || !(ifinfomsg->ifi_flags & IFF_POINTOPOINT));
  
          /* Handle interface attributes */
---- avahi-core/iface-pfroute.c~	2015-04-01 01:58:14.149727123 -0300
-+++ avahi-core/iface-pfroute.c	2017-04-13 11:28:47.547016465 -0300
+--- avahi-core/iface-pfroute.c~
++++ avahi-core/iface-pfroute.c
 @@ -80,8 +80,8 @@
    hw->flags_ok =
      (ifm->ifm_flags & IFF_UP) &&
@@ -166,7 +175,26 @@ Apply the following patch to the source code of Avahi:
              (m->server->config.allow_point_to_point || !(flags & IFF_POINTOPOINT));
          hw->name = avahi_strdup(lifreq->lifr_name);
          hw->mtu = mtu;
-----------
+--- avahi-core/resolve-service.c~
++++ avahi-core/resolve-service.c
+@@ -24,6 +24,7 @@
+ #include <string.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <net/if.h>
+ 
+ #include <avahi-common/domain.h>
+ #include <avahi-common/timeval.h>
+@@ -129,7 +130,7 @@
+                 r->service_name,
+                 r->service_type,
+                 r->domain_name,
+-                r->srv_record->data.srv.name,
++                (r->interface == if_nametoindex("lo")) ? "localhost" : r->srv_record->data.srv.name,
+                 r->address_record ? &a : NULL,
+                 r->srv_record->data.srv.port,
+                 r->txt_record ? r->txt_record->data.txt.string_list : NULL,
+```
 
 Build and install Avahi. This makes Avahi not only advertising
 services on the usual network interfaces but also on the "lo"
@@ -182,19 +210,36 @@ enough). It is possible that the advertising of the printer stops if
 the loopback interface is the only network interface running due to
 lack of a multicast-capable interface.
 
+The patch above is already submitted upstream and also the problem
+with network-less machines is reported. See
+
+https://github.com/lathiat/avahi/issues/125
+
+With this done, we have a completely standard-conforming support for
+IPP-over-USB. For the time being we have to take this into account in
+automated printer setup processes and in printer setup
+tools. cups-browsed for example uses the numeric IP if it is a local
+(127.X.Y.Z) one.
+
 Now we can restart systemd and UDEV to activate all this:
 
+```
 sudo systemctl daemon-reload
 sudo systemctl restart udev
+```
 
 If we connect and turn on an IPP-over-USB printer, ippusbxd gets
 started and makes the printer available under the IPP URI
 
+```
 ipp://localhost:60000/ipp/print
+```
 
 and its web administration interface under
 
+```
 http://localhost:60000/
+```
 
 (if you have problems with the Chrome browser, use Firefox).
 
@@ -202,15 +247,18 @@ It is also DNS-SD-broadcasted via our modified Avahi on the lo interface.
 
 To set up a print queue you could simply run
 
+```
 lpadmin -p printer -E -v ipp://localhost:60000/ipp/print -meverywhere
+```
 
 The "-meverywhere" makes CUPS auto-generate the PPD file for the
 printer, based on an IPP query of the printer's capabilities,
 independent whether the printer is an IPP Everywhere printer or an
-AirPrint printer.
+AirPrint printer. This method does not support PCLm-only printers, but
+the methods described below do.
 
 To create a print queue with the web interface of CUPS
-(http://localhost:631/), look for your printer under the discovered
+(`http://localhost:631/`), look for your printer under the discovered
 network printers (CUPS does not see that it is USB in reality) and
 select the entry which contains "driverless". On the page to select
 the models/PPDs/drivers, also select the entry containing
@@ -224,47 +272,60 @@ cups-browsed saves them).
 To do so, edit /etc/cups/cups-browsed.conf making sure that there is a
 line
 
+```
 CreateIPPPrinterQueues driverless
+```
 
 or
 
+```
 CreateIPPPrinterQueues all
+```
 
 and no other line beginning with
 
+```
 CreateIPPPrinterQueues
+```
 
 After editing the file restart cups-browsed with
 
+```
 sudo systemctl stop cups-browsed
 sudo systemctl start cups-browsed
+```
 
 Now you have a print queue whenever the printer is available and no
 print queue cluttering your print dialogs when the printer is not
 available.
 
-2. Expose the printer on the dummy0 interface
----------------------------------------------
+### 2. Expose the printer on the dummy0 interface
 
 First, install ippusbxd:
 
+```
 sudo cp exe/ippusbxd /usr/sbin
+```
 
 Make sure that this file is owned by root and world-readable and
 -executable.
 
 Now install the files to manage the automatic start of ippusbxd:
 
+```
 sudo cp systemd-udev/55-ippusbxd.rules /lib/udev/rules.d/
 sudo cp systemd-udev/ippusbxd@.service.dummy0 /lib/systemd/system/ippusbxd@.service
+```
 
 Make sure that they are owned by root and world-readable.
 
 Now create a "dummy0" network interface:
 
+```
 sudo modprobe dummy
 sudo ifconfig dummy0 10.0.0.1 netmask 255.255.255.0 multicast
 sudo ifconfig dummy0 up multicast
+```
 
 You could put these commands into /etc/rc.local to run them
 automatically at boot.
@@ -300,17 +361,23 @@ machine.
 
 Now we can restart systemd and UDEV to activate all this:
 
+```
 sudo systemctl daemon-reload
 sudo systemctl restart udev
+```
 
 If we connect and turn on an IPP-over-USB printer, ippusbxd gets
 started and makes the printer available under the IPP URI
 
+```
 ipp://10.0.0.1:60000/ipp/print
+```
 
 and its web administration interface under
 
+```
 http://10.0.0.1:60000/
+```
 
 (if you have problems with the Chrome browser, use Firefox).
 
@@ -318,15 +385,18 @@ It is also DNS-SD-broadcasted via Avahi on the dummy0 interface.
 
 To set up a print queue you could simply run
 
+```
 lpadmin -p printer -E -v ipp://10.0.0.1:60000/ipp/print -meverywhere
+```
 
 The "-meverywhere" makes CUPS auto-generate the PPD file for the
 printer, based on an IPP query of the printer's capabilities,
 independent whether the printer is an IPP Everywhere printer or an
-AirPrint printer.
+AirPrint printer. This method does not support PCLm-only printers, but
+the methods described below do.
 
 To create a print queue with the web interface of CUPS
-(http://localhost:631/), look for your printer under the discovered
+(`http://localhost:631/`), look for your printer under the discovered
 network printers (CUPS does not see that it is USB in reality) and
 select the entry which contains "driverless". On the page to select
 the models/PPDs/drivers, also select the entry containing
@@ -340,34 +410,42 @@ cups-browsed saves them).
 To do so, edit /etc/cups/cups-browsed.conf making sure that there is a
 line
 
+```
 CreateIPPPrinterQueues driverless
+```
 
 or
 
+```
 CreateIPPPrinterQueues all
+```
 
 and no other line beginning with
 
+```
 CreateIPPPrinterQueues
+```
 
 After editing the file restart cups-browsed with
 
+```
 sudo systemctl stop cups-browsed
 sudo systemctl start cups-browsed
+```
 
 Now you have a print queue whenever the printer is available and no
 print queue cluttering your print dialogs when the printer is not
 available.
 
 
-Presentation on IPPUSBXD
-=======
+## Presentation on IPPUSBXD
+
 On August 2014 at the Fall Printer Working Group meeting I gave a presentation
 on ippusbxd and the ipp over usb protocol. Slides from this presentation can be
 found in the docs folder.
 
-IPPUSBXD, the name
-=======
+## IPPUSBXD, the name
+
 The original name for this project was ippusbd. Part way through development it
 came to my attention that ippusbd was the name of the ipp over usb implemented
 used by Mac OSX.
@@ -377,8 +455,8 @@ IPPUSBXD.
 
 Either all-caps IPPUSBXD or all-lower-case ippusbxd are valid names.
 
-License
-=======
+## License
+
 Copyright 2014 Daniel Dressler,
           2015-2016 Till Kamppeter
 
