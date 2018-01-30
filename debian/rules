@@ -2,6 +2,7 @@
 
 export VERBOSE=1
 export DEB_CFLAGS_MAINT_APPEND = $(shell dpkg-buildflags --get CPPFLAGS)
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 %:
 	dh $@
