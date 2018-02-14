@@ -35,7 +35,6 @@ struct options {
   int help_mode;
   int verbose_mode;
   int nofork_mode;
-  int noprinter_mode;
   int nobroadcast;
 
   /* Printer identity */

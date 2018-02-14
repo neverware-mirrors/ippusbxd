@@ -30,10 +30,10 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "options.h"
+#include "http.h"
 #include "logging.h"
+#include "options.h"
 #include "tcp.h"
-
 
 struct tcp_sock_t *tcp_open(uint16_t port, char* interface)
 {
@@ -221,56 +221,37 @@ uint16_t tcp_port_number_get(struct tcp_sock_t *sock)
   return 0;
 }
 
-struct http_packet_t *tcp_packet_get(struct tcp_conn_t *tcp,
-                                     struct http_message_t *msg)
+struct http_packet_t *tcp_packet_get(struct tcp_conn_t *tcp)
 {
   /* Alloc packet ==---------------------------------------------------== */
-  struct http_packet_t *pkt = packet_new(msg);
+  struct http_packet_t *pkt = packet_new();
   if (pkt == NULL) {
     ERR("failed to create packet for incoming tcp message");
     goto error;
   }
 
-  size_t want_size = packet_pending_bytes(pkt);
-  if (want_size == 0) {
-    NOTE("TCP: Got %lu from spare buffer", pkt->filled_size);
-    return pkt;
-  }
-
   struct timeval tv;
   tv.tv_sec = 3;
   tv.tv_usec = 0;
-  setsockopt(tcp->sd, SOL_SOCKET, SO_RCVTIMEO,
-	     (char *)&tv, sizeof(struct timeval));
-
-  while (want_size != 0 && !msg->is_completed && !g_options.terminate) {
-    NOTE("TCP: Getting %d bytes", want_size);
-    uint8_t *subbuffer = pkt->buffer + pkt->filled_size;
-    ssize_t gotten_size = recv(tcp->sd, subbuffer, want_size, 0);
-    if (gotten_size < 0) {
-      int errno_saved = errno;
-      ERR("recv failed with err %d:%s", errno_saved,
-	  strerror(errno_saved));
-      tcp->is_closed = 1;
-      goto error;
-    }
-    NOTE("TCP: Got %d bytes", gotten_size);
-    if (gotten_size == 0) {
-      tcp->is_closed = 1;
-      if (pkt->filled_size == 0) {
-	/* Client closed TCP conn */
-	goto error;
-      } else {
-	break;
-      }
-    }
-
-    packet_mark_received(pkt, (unsigned) gotten_size);
-    want_size = packet_pending_bytes(pkt);
-    NOTE("TCP: Want more %d bytes; Message %scompleted", want_size, msg->is_completed ? "" : "not ");
+  if (setsockopt(tcp->sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
+    ERR("TCP: Setting options for tcp connection socket failed");
+    goto error;
   }
 
-  NOTE("TCP: Received %lu bytes", pkt->filled_size);
+  ssize_t gotten_size = recv(tcp->sd, pkt->buffer, pkt->buffer_capacity, 0);
+
+  if (gotten_size < 0) {
+    int errno_saved = errno;
+    ERR("recv failed with err %d:%s", errno_saved, strerror(errno_saved));
+    tcp->is_closed = 1;
+    goto error;
+  }
+
+  if (gotten_size == 0) {
+    tcp->is_closed = 1;
+  }
+
+  pkt->filled_size = gotten_size;
   return pkt;
 
  error:
@@ -283,9 +264,10 @@ int tcp_packet_send(struct tcp_conn_t *conn, struct http_packet_t *pkt)
 {
   size_t remaining = pkt->filled_size;
   size_t total = 0;
+
   while (remaining > 0 && !g_options.terminate) {
-    ssize_t sent = send(conn->sd, pkt->buffer + total,
-			remaining, MSG_NOSIGNAL);
+    ssize_t sent = send(conn->sd, pkt->buffer + total, remaining, MSG_NOSIGNAL);
+
     if (sent < 0) {
       if (errno == EPIPE) {
 	conn->is_closed = 1;
@@ -295,13 +277,13 @@ int tcp_packet_send(struct tcp_conn_t *conn, struct http_packet_t *pkt)
       return -1;
     }
 
-    size_t sent_ulong = (unsigned) sent;
-    total += sent_ulong;
-    if (sent_ulong >= remaining)
+    total += sent;
+    if (sent >= remaining)
       remaining = 0;
     else
-      remaining -= sent_ulong;
+      remaining -= sent;
   }
+
   NOTE("TCP: sent %lu bytes", total);
   return 0;
 }

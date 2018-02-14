@@ -48,6 +48,5 @@ struct tcp_conn_t *tcp_conn_select(struct tcp_sock_t *sock,
 				   struct tcp_sock_t *sock6);
 void tcp_conn_close(struct tcp_conn_t *);
 
-struct http_packet_t *tcp_packet_get(struct tcp_conn_t *,
-                                     struct http_message_t *);
+struct http_packet_t *tcp_packet_get(struct tcp_conn_t *);
 int tcp_packet_send(struct tcp_conn_t *, struct http_packet_t *);
