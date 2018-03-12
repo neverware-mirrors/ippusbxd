@@ -168,6 +168,46 @@ int get_device_id(struct libusb_device_handle *handle,
   return (0);
 }
 
+static void try_detach_kernel_driver(struct usb_sock_t *usb,
+                                     struct usb_interface *uf) {
+  /* Make kernel release interface */
+  if (libusb_kernel_driver_active(usb->printer, uf->libusb_interface_index) ==
+      1) {
+    /* Only linux supports this
+       other platforms will fail
+       thus we ignore the error code
+       it either works or it does not */
+    libusb_detach_kernel_driver(usb->printer, uf->libusb_interface_index);
+  }
+}
+
+static int try_claim_usb_interface(struct usb_sock_t *usb,
+                                   struct usb_interface *uf) {
+  /* Claim the whole interface */
+  int status = 0;
+  do {
+    /* Spinlock-like
+       Libusb does not offer a blocking call
+       so we're left with a spinlock */
+    status = libusb_claim_interface(usb->printer, uf->libusb_interface_index);
+    if (status)
+      NOTE("Failed to claim interface %d, retrying",
+           uf->libusb_interface_index);
+    switch (status) {
+      case LIBUSB_ERROR_NOT_FOUND:
+        ERR("USB Interface did not exist");
+        return -1;
+      case LIBUSB_ERROR_NO_DEVICE:
+        ERR("Printer was removed");
+        return -1;
+      default:
+        break;
+    }
+  } while (status != 0 && !g_options.terminate);
+
+  return 0;
+}
+
 struct usb_sock_t *usb_open()
 {
   int status_lock;
@@ -370,6 +410,23 @@ struct usb_sock_t *usb_open()
 	ERR("Failed to create interface lock #%d",
 	    interf_num);
 	goto error;
+      }
+
+      /* Try to make the kernel release the usb interface */
+      try_detach_kernel_driver(usb, uf);
+
+      /* Try to claim the usb interface */
+      if (try_claim_usb_interface(usb, uf)) {
+        ERR("Failed to claim usb interface #%d", uf->interface_number);
+        goto error;
+      }
+
+      /* Select the IPP-USB alt setting of the interface */
+      if (libusb_set_interface_alt_setting(
+              usb->printer, uf->libusb_interface_index, uf->interface_alt)) {
+        ERR("Failed to set alt setting for interface #%d",
+            uf->interface_number);
+        goto error;
       }
 
       break;
@@ -643,45 +700,6 @@ struct usb_conn_t *usb_conn_acquire(struct usb_sock_t *usb)
       goto acquire_error;
     }
 
-    /* Make kernel release interface */
-    if (libusb_kernel_driver_active(usb->printer,
-				    uf->libusb_interface_index) == 1) {
-      /* Only linux supports this
-	 other platforms will fail
-	 thus we ignore the error code
-	 it either works or it does not */
-      libusb_detach_kernel_driver(usb->printer,
-				  uf->libusb_interface_index);
-    }
-
-    /* Claim the whole interface */
-    int status = 0;
-    do {
-      /* Spinlock-like
-	 Libusb does not offer a blocking call
-	 so we're left with a spinlock */
-      status = libusb_claim_interface(usb->printer, uf->libusb_interface_index);
-      if (status) NOTE("Failed to claim interface %d, retrying", conn->interface_index);
-      switch (status) {
-      case LIBUSB_ERROR_NOT_FOUND:
-	ERR("USB Interface did not exist");
-	goto acquire_error;
-      case LIBUSB_ERROR_NO_DEVICE:
-	ERR("Printer was removed");
-	goto acquire_error;
-      default:
-	break;
-      }
-    } while (status != 0 && !g_options.terminate);
-
-    if (g_options.terminate)
-      goto acquire_error;
-
-    /* Select the IPP-USB alt setting of the interface */
-    libusb_set_interface_alt_setting(usb->printer,
-				     uf->libusb_interface_index,
-				     uf->interface_alt);
-
     /* Take successfully acquired interface from the pool */
     usb->num_taken++;
     usb->num_avail--;
@@ -701,16 +719,6 @@ void usb_conn_release(struct usb_conn_t *conn)
   struct usb_sock_t *usb = conn->parent;
   sem_wait(&usb->pool_manage_lock);
   {
-    int status = 0;
-    do {
-      /* Spinlock-like
-	 libusb does not offer a blocking call
-	 so we're left with a spinlock */
-      status = libusb_release_interface(usb->printer,
-					conn->interface->libusb_interface_index);
-      if (status) NOTE("Failed to release interface %d, retrying", conn->interface_index);
-    } while (status != 0 && !g_options.terminate);
-
     /* Return usb interface to pool */
     usb->num_taken--;
     usb->num_avail++;
@@ -719,7 +727,6 @@ void usb_conn_release(struct usb_conn_t *conn)
 
     /* Release our interface lock */
     sem_post(&conn->interface->lock);
-
     free(conn);
   }
   sem_post(&usb->pool_manage_lock);
