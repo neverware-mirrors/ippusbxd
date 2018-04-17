@@ -114,17 +114,18 @@ static void list_service_threads(int num_service_threads,
   NOTE("%s", buf);
 }
 
-static int register_service_thread(int *num_service_threads,
-				   struct service_thread_param ***service_threads,
-				   struct service_thread_param *new_thread)
+static int register_service_thread(
+    int *num_service_threads, struct service_thread_param ***service_threads,
+    struct service_thread_param *new_thread)
 {
   NOTE("Registering thread #%u", new_thread->thread_num);
-  (*num_service_threads) ++;
-  *service_threads = realloc(*service_threads,
-			     *num_service_threads * sizeof(void*));
+  (*num_service_threads)++;
+  *service_threads =
+      realloc(*service_threads, *num_service_threads * sizeof(void *));
   if (*service_threads == NULL) {
-    ERR("Registering thread #%u: Failed to alloc space for thread registration list",
-	new_thread->thread_num);
+    ERR("Registering thread #%u: Failed to alloc space for thread registration "
+        "list",
+        new_thread->thread_num);
     return -1;
   }
   (*service_threads)[*num_service_threads - 1] = new_thread;
@@ -138,25 +139,36 @@ static int unregister_service_thread(
   int i;
 
   NOTE("Unregistering thread #%u", thread_num);
-  for (i = 0; i < *num_service_threads; i ++)
-    if ((*service_threads)[i]->thread_num == thread_num)
-      break;
+  /* Search |service_threads| for an element with a matching thread number. */
+  for (i = 0; i < *num_service_threads; i++) {
+    if ((*service_threads)[i]->thread_num == thread_num) break;
+  }
+
   if (i >= *num_service_threads) {
     ERR("Unregistering thread #%u: Cannot unregister, not found", thread_num);
     return -1;
   }
-  (*num_service_threads) --;
-  for (; i < *num_service_threads; i ++)
+
+  (*num_service_threads)--;
+  struct service_thread_param *removed_thread = (*service_threads)[i];
+  /* Shift the contents after |removed_thread| down. */
+  for (; i < *num_service_threads; i++) {
     (*service_threads)[i] = (*service_threads)[i + 1];
-  *service_threads = realloc(*service_threads,
-			     *num_service_threads * sizeof(void*));
-  if (*num_service_threads == 0)
+  }
+  free(removed_thread);
+
+  *service_threads =
+      realloc(*service_threads, *num_service_threads * sizeof(void *));
+
+  if (*num_service_threads == 0) {
     *service_threads = NULL;
-  else if (*service_threads == NULL) {
-    ERR("Unregistering thread #%u: Failed to alloc space for thread registration list",
-	thread_num);
+  } else if (*service_threads == NULL) {
+    ERR("Unregistering thread #%u: Failed to alloc space for thread "
+        "registration list",
+        thread_num);
     return -1;
   }
+
   return 0;
 }
 
@@ -286,6 +298,8 @@ static void *service_connection(void *params_void)
   if (setup_communication_thread(&service_printer_connection, printer_params))
     goto cleanup;
 
+  pthread_t printer_params_thread_handle = printer_params->thread_handle;
+
   /* This function will run until the socket has been closed. When this function
      returns it means that the communication has been completed. */
   service_socket_connection(params);
@@ -296,8 +310,8 @@ static void *service_connection(void *params_void)
   
   /* Wait for the printer thread to exit. */
   NOTE("Thread #%u: Waiting for thread #%u to complete", thread_num,
-       printer_params->thread_num);
-  if (pthread_join(printer_params->thread_handle, NULL))
+       thread_num + 1);
+  if (pthread_join(printer_params_thread_handle, NULL))
     ERR("Thread #%u: Something went wrong trying to join the printer thread",
         thread_num);
 
@@ -313,7 +327,6 @@ cleanup:
        g_options.terminate ? "shutdown requested"
                            : "communication thread terminated");
   tcp_conn_close(params->tcp);
-  free(params);
 
   /* Execute clean-up handler. */
   pthread_cleanup_pop(1);
@@ -804,7 +817,7 @@ int main(int argc, char *argv[])
   g_options.bus = 0;
   g_options.device = 0;
 
-  while ((c = getopt_long(argc, argv, "qnhdp:P:i:s:lv:m:NB",
+  while ((c = getopt_long(argc, argv, "qnhdp:P:i:s:lv:m:B",
 			  long_options, &option_index)) != -1) {
     switch (c) {
     case '?':
