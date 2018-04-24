@@ -194,14 +194,17 @@ static void read_transfer_callback(struct libusb_transfer *transfer)
 
   switch (transfer->status) {
     case LIBUSB_TRANSFER_COMPLETED:
-      NOTE("Thread #%u: Transfer has completed successfully", thread_num);
       user_data->pkt->filled_size = transfer->actual_length;
 
-      NOTE("Thread #%u: Pkt from %s (buffer size: %zu)\n===\n%s===", thread_num,
-           "usb", user_data->pkt->filled_size,
-           hexdump(user_data->pkt->buffer, (int)user_data->pkt->filled_size));
+      if (transfer->actual_length) {
+        NOTE("Thread #%u: Pkt from %s (buffer size: %zu)\n===\n%s===", thread_num,
+             "usb", user_data->pkt->filled_size,
+             hexdump(user_data->pkt->buffer, (int)user_data->pkt->filled_size));
 
-      tcp_packet_send(user_data->tcp, user_data->pkt);
+        tcp_packet_send(user_data->tcp, user_data->pkt);
+        /* Mark the tcp socket as active. */
+        set_is_active(user_data->tcp, 1);
+      }
 
       break;
     case LIBUSB_TRANSFER_ERROR:
@@ -235,6 +238,9 @@ static void read_transfer_callback(struct libusb_transfer *transfer)
       g_options.terminate = 1;
   }
 
+  /* Free the packet used for the transfer. */
+  packet_free(user_data->pkt);
+
   /* Mark the transfer as completed. */
   pthread_mutex_lock(read_inflight_mutex);
   *user_data->read_inflight = 0;
@@ -242,7 +248,6 @@ static void read_transfer_callback(struct libusb_transfer *transfer)
   pthread_mutex_unlock(read_inflight_mutex);
 
   /* Cleanup the data used for the transfer */
-  packet_free(user_data->pkt);
   free(user_data);
   libusb_free_transfer(transfer);
 }
@@ -261,8 +266,6 @@ static void *service_connection(void *params_void)
   struct service_thread_param *params =
       (struct service_thread_param *)params_void;
   uint32_t thread_num = params->thread_num;
-
-  NOTE("Thread #%u: Setting up both ends for communication", thread_num);
 
   /* Detach this thread so that the main thread does not need to join this
      thread after termination for clean-up. */
@@ -293,8 +296,6 @@ static void *service_connection(void *params_void)
   printer_params->thread_num += 1;
 
   /* Attempt to start the printer's end of the communication. */
-  NOTE("Thread #%u: Attempting to register thread %u", thread_num,
-       thread_num + 1);
   if (setup_communication_thread(&service_printer_connection, printer_params))
     goto cleanup;
 
@@ -338,27 +339,36 @@ static void service_socket_connection(struct service_thread_param *params)
 {
   uint32_t thread_num = params->thread_num;
 
-  NOTE("Thread #%u: Starting on socket end", thread_num);
-
   struct http_packet_t *pkt = NULL;
 
   while (is_socket_open(params) && !g_options.terminate) {
-    pkt = tcp_packet_get(params->tcp);
-
+    /* Allocate packet for incoming message. */
+    struct http_packet_t *pkt = packet_new();
     if (pkt == NULL) {
-      if (!is_socket_open(params))
-        NOTE("Thread: #%u: Client closed connection", thread_num);
-      else
-        NOTE("Thread: #%u: There was an error reading from the socket",
-             thread_num);
+      ERR("Failed to allocate packet for incoming tcp message");
       return;
     }
 
-    NOTE("Thread #%u: Pkt from tcp (buffer size: %zu)\n===\n%s===", thread_num,
-         pkt->filled_size, hexdump(pkt->buffer, (int)pkt->filled_size));
+    int status = tcp_packet_get(params->tcp, pkt);
+    if (status) {
+      NOTE("Thread #%u: There was an error reading from the socket",
+           thread_num);
+      return;
+    }
 
-    /* Send pkt to printer. */
-    usb_conn_packet_send(params->usb_conn, pkt);
+    if (!is_socket_open(params)) {
+      NOTE("Thread #%u: Client closed connection", thread_num);
+      return;
+    }
+
+    if (pkt->filled_size) {
+      NOTE("Thread #%u: Pkt from tcp (buffer size: %zu)\n===\n%s===", thread_num,
+           pkt->filled_size, hexdump(pkt->buffer, (int)pkt->filled_size));
+
+      /* Send pkt to printer. */
+      usb_conn_packet_send(params->usb_conn, pkt);
+    }
+
     packet_free(pkt);
   }
 }
@@ -392,8 +402,6 @@ static void *service_printer_connection(void *params_void)
       (struct service_thread_param *)params_void;
   uint32_t thread_num = params->thread_num;
 
-  NOTE("Thread #%u: Starting on printer end", thread_num);
-
   /* Register clean-up handler. */
   pthread_cleanup_push(cleanup_handler, &thread_num);
 
@@ -418,7 +426,6 @@ static void *service_printer_connection(void *params_void)
     if (!is_socket_open(params) || g_options.terminate)
       break;
 
-    NOTE("Thread #%u: No read in flight, starting a new one", thread_num);
     struct http_packet_t *pkt = packet_new();
     if (pkt == NULL) {
       ERR("Thread #%u: Failed to allocate packet", thread_num);
@@ -435,7 +442,7 @@ static void *service_printer_connection(void *params_void)
     }
 
     read_transfer = setup_async_read(
-        params->usb_conn, pkt, read_transfer_callback, (void *)user_data, 2000);
+        params->usb_conn, pkt, read_transfer_callback, (void *)user_data, 5000);
 
     if (read_transfer == NULL) {
       ERR("Thread #%u: Failed to allocate memory for libusb transfer",

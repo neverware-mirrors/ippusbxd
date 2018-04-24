@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <pthread.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -221,30 +222,36 @@ uint16_t tcp_port_number_get(struct tcp_sock_t *sock)
   return 0;
 }
 
-struct http_packet_t *tcp_packet_get(struct tcp_conn_t *tcp)
+int tcp_packet_get(struct tcp_conn_t *tcp, struct http_packet_t *pkt)
 {
-  /* Alloc packet ==---------------------------------------------------== */
-  struct http_packet_t *pkt = packet_new();
-  if (pkt == NULL) {
-    ERR("failed to create packet for incoming tcp message");
-    goto error;
-  }
-
   struct timeval tv;
-  tv.tv_sec = 3;
+  tv.tv_sec = 5;
   tv.tv_usec = 0;
   if (setsockopt(tcp->sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
     ERR("TCP: Setting options for tcp connection socket failed");
-    goto error;
+    return -1;
   }
 
   ssize_t gotten_size = recv(tcp->sd, pkt->buffer, pkt->buffer_capacity, 0);
 
   if (gotten_size < 0) {
     int errno_saved = errno;
+    /* In the event that there was a timeout reading from the socket, but there
+     * has recently been data sent from the printer to the socket, then we do
+     * not return an error and simply allow for another attempt at reading from
+     * the socket. */
+    if ((errno_saved == EAGAIN || errno_saved == EWOULDBLOCK) &&
+        get_is_active(tcp)) {
+      /* Mark the the socket as inactive so that if another timeout occurs
+       * without new data being transferred on the socket then the connection
+       * will close. */
+      set_is_active(tcp, 0);
+      return 0;
+    }
+
     ERR("recv failed with err %d:%s", errno_saved, strerror(errno_saved));
     tcp->is_closed = 1;
-    goto error;
+    return -1;
   }
 
   if (gotten_size == 0) {
@@ -252,12 +259,7 @@ struct http_packet_t *tcp_packet_get(struct tcp_conn_t *tcp)
   }
 
   pkt->filled_size = gotten_size;
-  return pkt;
-
- error:
-  if (pkt != NULL)
-    packet_free(pkt);
-  return NULL;
+  return 0;
 }
 
 int tcp_packet_send(struct tcp_conn_t *conn, struct http_packet_t *pkt)
@@ -297,6 +299,7 @@ struct tcp_conn_t *tcp_conn_select(struct tcp_sock_t *sock,
     ERR("Calloc for connection struct failed");
     goto error;
   }
+
   fd_set rfds;
   int retval = 0;
   int nfds = 0;
@@ -336,6 +339,11 @@ struct tcp_conn_t *tcp_conn_select(struct tcp_sock_t *sock,
     ERR("accept failed");
     goto error;
   }
+
+  /* Attempt to initialize the connection's mutex. */
+  if (pthread_mutex_init(&conn->mutex, NULL))
+    goto error;
+
   return conn;
 
  error:
@@ -353,5 +361,22 @@ void tcp_conn_close(struct tcp_conn_t *conn)
   shutdown(conn->sd, SHUT_RDWR);
 
   close(conn->sd);
+  pthread_mutex_destroy(&conn->mutex);
   free(conn);
+}
+
+int get_is_active(struct tcp_conn_t *tcp)
+{
+  pthread_mutex_lock(&tcp->mutex);
+  int val = tcp->is_active;
+  pthread_mutex_unlock(&tcp->mutex);
+
+  return val;
+}
+
+void set_is_active(struct tcp_conn_t *tcp, int val)
+{
+  pthread_mutex_lock(&tcp->mutex);
+  tcp->is_active = val;
+  pthread_mutex_unlock(&tcp->mutex);
 }
