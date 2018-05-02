@@ -81,7 +81,7 @@ static int is_socket_open(const struct service_thread_param *param);
 /* Global variables */
 static pthread_mutex_t thread_register_mutex;
 static struct service_thread_param **service_threads = NULL;
-static int num_service_threads = 0;
+static uint32_t num_service_threads = 0;
 
 static void sigterm_handler(int sig)
 {
@@ -90,10 +90,11 @@ static void sigterm_handler(int sig)
   NOTE("Caught signal %d, shutting down ...", sig);
 }
 
-static void list_service_threads(int num_service_threads,
-				 struct service_thread_param **service_threads)
+static void list_service_threads(
+    uint32_t num_service_threads,
+    struct service_thread_param **service_threads)
 {
-  int i;
+  uint32_t i;
   char *p;
   char buf[10240];
 
@@ -115,7 +116,8 @@ static void list_service_threads(int num_service_threads,
 }
 
 static int register_service_thread(
-    int *num_service_threads, struct service_thread_param ***service_threads,
+    uint32_t *num_service_threads,
+    struct service_thread_param ***service_threads,
     struct service_thread_param *new_thread)
 {
   NOTE("Registering thread #%u", new_thread->thread_num);
@@ -133,10 +135,10 @@ static int register_service_thread(
 }
 
 static int unregister_service_thread(
-    int *num_service_threads, struct service_thread_param ***service_threads,
-    uint32_t thread_num)
+    uint32_t *num_service_threads,
+    struct service_thread_param ***service_threads, uint32_t thread_num)
 {
-  int i;
+  uint32_t i;
 
   NOTE("Unregistering thread #%u", thread_num);
   /* Search |service_threads| for an element with a matching thread number. */
@@ -339,18 +341,17 @@ static void service_socket_connection(struct service_thread_param *params)
 {
   uint32_t thread_num = params->thread_num;
 
-  struct http_packet_t *pkt = NULL;
-
   while (is_socket_open(params) && !g_options.terminate) {
-    /* Allocate packet for incoming message. */
-    struct http_packet_t *pkt = packet_new();
-    if (pkt == NULL) {
-      ERR("Failed to allocate packet for incoming tcp message");
+    int result = poll_tcp_socket(params->tcp);
+    if (result < 0 || !is_socket_open(params)) {
+      NOTE("Thread #%u: Client closed connection", thread_num);
       return;
+    } else if (result == 0) {
+      continue;
     }
 
-    int status = tcp_packet_get(params->tcp, pkt);
-    if (status) {
+    struct http_packet_t *pkt = tcp_packet_get(params->tcp);
+    if (pkt == NULL) {
       NOTE("Thread #%u: There was an error reading from the socket",
            thread_num);
       return;
@@ -361,13 +362,11 @@ static void service_socket_connection(struct service_thread_param *params)
       return;
     }
 
-    if (pkt->filled_size) {
-      NOTE("Thread #%u: Pkt from tcp (buffer size: %zu)\n===\n%s===", thread_num,
-           pkt->filled_size, hexdump(pkt->buffer, (int)pkt->filled_size));
+    NOTE("Thread #%u: Pkt from tcp (buffer size: %zu)\n===\n%s===", thread_num,
+         pkt->filled_size, hexdump(pkt->buffer, (int)pkt->filled_size));
 
-      /* Send pkt to printer. */
-      usb_conn_packet_send(params->usb_conn, pkt);
-    }
+    /* Send pkt to printer. */
+    usb_conn_packet_send(params->usb_conn, pkt);
 
     packet_free(pkt);
   }
@@ -623,25 +622,7 @@ static void start_daemon()
   if (usb_sock == NULL) goto cleanup_usb;
 
   /* Capture a socket */
-  uint16_t desired_port = g_options.desired_port;
-  g_options.tcp_socket = NULL;
-  g_options.tcp6_socket = NULL;
-  for (;;) {
-    g_options.tcp_socket = tcp_open(desired_port, g_options.interface);
-    g_options.tcp6_socket = tcp6_open(desired_port, g_options.interface);
-    if (g_options.tcp_socket || g_options.tcp6_socket || g_options.only_desired_port)
-      break;
-    /* Search for a free port */
-    desired_port ++;
-    /* We failed with 0 as port number or we reached the max
-       port number */
-    if (desired_port == 1 || desired_port == 0)
-      /* IANA recommendation of 49152 to 65535 for ephemeral
-	 ports
-	 https://en.wikipedia.org/wiki/Ephemeral_port */
-      desired_port = 49152;
-    NOTE("Access to desired port failed, trying alternative port %d", desired_port);
-  }
+  uint16_t desired_port = open_tcp_socket();
   if (g_options.tcp_socket == NULL && g_options.tcp6_socket == NULL)
     goto cleanup_tcp;
 

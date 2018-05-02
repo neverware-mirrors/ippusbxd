@@ -222,36 +222,30 @@ uint16_t tcp_port_number_get(struct tcp_sock_t *sock)
   return 0;
 }
 
-int tcp_packet_get(struct tcp_conn_t *tcp, struct http_packet_t *pkt)
+struct http_packet_t *tcp_packet_get(struct tcp_conn_t *tcp)
 {
+  /* Allocate packet for incoming message. */
+  struct http_packet_t *pkt = packet_new();
+  if (pkt == NULL) {
+    ERR("failed to create packet for incoming tcp message");
+    goto error;
+  }
+
   struct timeval tv;
-  tv.tv_sec = 5;
+  tv.tv_sec = 3;
   tv.tv_usec = 0;
   if (setsockopt(tcp->sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
     ERR("TCP: Setting options for tcp connection socket failed");
-    return -1;
+    goto error;
   }
 
   ssize_t gotten_size = recv(tcp->sd, pkt->buffer, pkt->buffer_capacity, 0);
 
   if (gotten_size < 0) {
     int errno_saved = errno;
-    /* In the event that there was a timeout reading from the socket, but there
-     * has recently been data sent from the printer to the socket, then we do
-     * not return an error and simply allow for another attempt at reading from
-     * the socket. */
-    if ((errno_saved == EAGAIN || errno_saved == EWOULDBLOCK) &&
-        get_is_active(tcp)) {
-      /* Mark the the socket as inactive so that if another timeout occurs
-       * without new data being transferred on the socket then the connection
-       * will close. */
-      set_is_active(tcp, 0);
-      return 0;
-    }
-
     ERR("recv failed with err %d:%s", errno_saved, strerror(errno_saved));
     tcp->is_closed = 1;
-    return -1;
+    goto error;
   }
 
   if (gotten_size == 0) {
@@ -259,7 +253,12 @@ int tcp_packet_get(struct tcp_conn_t *tcp, struct http_packet_t *pkt)
   }
 
   pkt->filled_size = gotten_size;
-  return 0;
+  return pkt;
+
+ error:
+  if (pkt != NULL)
+    packet_free(pkt);
+  return NULL;
 }
 
 int tcp_packet_send(struct tcp_conn_t *conn, struct http_packet_t *pkt)
@@ -279,11 +278,12 @@ int tcp_packet_send(struct tcp_conn_t *conn, struct http_packet_t *pkt)
       return -1;
     }
 
-    total += sent;
-    if (sent >= remaining)
+    size_t sent_unsigned = (size_t)sent;
+    total += sent_unsigned;
+    if (sent_unsigned >= remaining)
       remaining = 0;
     else
-      remaining -= sent;
+      remaining -= sent_unsigned;
   }
 
   NOTE("TCP: sent %lu bytes", total);
@@ -363,6 +363,40 @@ void tcp_conn_close(struct tcp_conn_t *conn)
   close(conn->sd);
   pthread_mutex_destroy(&conn->mutex);
   free(conn);
+}
+
+/* Poll the tcp socket to determine if it is ready to transmit data. */
+int poll_tcp_socket(struct tcp_conn_t *tcp)
+{
+  struct pollfd poll_fd;
+  poll_fd.fd = tcp->sd;
+  poll_fd.events = POLLIN;
+  const int nfds = 1;
+  const int timeout = 5000;  /* 5 seconds. */
+
+  int result = poll(&poll_fd, nfds, timeout);
+  if (result < 0) {
+    ERR("poll failed with error %d:%s", errno, strerror(errno));
+    tcp->is_closed = 1;
+  } else if (result == 0) {
+    /* In the case where the poll timed out, check to see whether or not data
+     * has recently been sent from the printer along the socket. If so, then we
+     * keep the connection alive an reset the is_active flag. Otherwise, close
+     * the connection. */
+    if (get_is_active(tcp)) {
+      set_is_active(tcp, 0);
+    } else {
+      tcp->is_closed = 1;
+    }
+  } else {
+    if (poll_fd.revents != POLLIN) {
+      ERR("poll returned an unexpected event");
+      tcp->is_closed = 1;
+      return -1;
+    }
+  }
+
+  return result;
 }
 
 int get_is_active(struct tcp_conn_t *tcp)

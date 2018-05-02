@@ -609,55 +609,6 @@ void usb_register_callback(struct usb_sock_t *usb)
     ERR("Failed to register unplug callback");
 }
 
-static void usb_conn_mark_staled(struct usb_conn_t *conn)
-{
-  if (conn->is_staled)
-    return;
-
-  struct usb_sock_t *usb = conn->parent;
-
-  sem_wait(&usb->num_staled_lock);
-  {
-    usb->num_staled++;
-  }
-  sem_post(&usb->num_staled_lock);
-
-  conn->is_staled = 1;
-}
-
-static void usb_conn_mark_moving(struct usb_conn_t *conn)
-{
-  if (!conn->is_staled)
-    return;
-
-  struct usb_sock_t *usb = conn->parent;
-
-  sem_wait(&usb->num_staled_lock);
-  {
-    usb->num_staled--;
-  }
-  sem_post(&usb->num_staled_lock);
-
-  conn->is_staled = 0;
-}
-
-static int usb_all_conns_staled(struct usb_sock_t *usb)
-{
-  int staled;
-
-  sem_wait(&usb->num_staled_lock);
-  {
-    sem_wait(&usb->pool_manage_lock);
-    {
-      staled = usb->num_staled == usb->num_taken;
-    }
-    sem_post(&usb->pool_manage_lock);
-  }
-  sem_post(&usb->num_staled_lock);
-
-  return staled;
-}
-
 struct usb_conn_t *usb_conn_acquire(struct usb_sock_t *usb)
 {
   int i;
