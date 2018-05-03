@@ -214,7 +214,8 @@ static void read_transfer_callback(struct libusb_transfer *transfer)
       g_options.terminate = 1;
       break;
     case LIBUSB_TRANSFER_TIMED_OUT:
-      ERR("Thread #%u: The transfer timed out before it could be completed: "
+      NOTE(
+          "Thread #%u: The transfer timed out before it could be completed: "
           "Received %u bytes",
           thread_num, transfer->actual_length);
       break;
