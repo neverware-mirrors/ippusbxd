@@ -67,4 +67,8 @@ struct usb_conn_t *usb_conn_acquire(struct usb_sock_t *);
 void usb_conn_release(struct usb_conn_t *);
 
 int usb_conn_packet_send(struct usb_conn_t *, struct http_packet_t *);
-struct http_packet_t *usb_conn_packet_get(struct usb_conn_t *, struct http_message_t *);
+
+struct libusb_transfer *setup_async_read(struct usb_conn_t *conn,
+                                         struct http_packet_t *pkt,
+                                         libusb_transfer_cb_fn callback,
+                                         void *user_data, uint32_t timeout);

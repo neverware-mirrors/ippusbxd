@@ -168,6 +168,43 @@ int get_device_id(struct libusb_device_handle *handle,
   return (0);
 }
 
+static void try_detach_kernel_driver(struct usb_sock_t *usb,
+                                     struct usb_interface *uf) {
+  /* Make kernel release interface */
+  if (libusb_kernel_driver_active(usb->printer, uf->libusb_interface_index) ==
+      1) {
+    /* Only linux supports this other platforms will fail thus we ignore the
+       error code it either works or it does not */
+    libusb_detach_kernel_driver(usb->printer, uf->libusb_interface_index);
+  }
+}
+
+static int try_claim_usb_interface(struct usb_sock_t *usb,
+                                   struct usb_interface *uf) {
+  /* Claim the whole interface */
+  int status = 0;
+  do {
+    /* Spinlock-like Libusb does not offer a blocking call so we're left with a
+       spinlock. */
+    status = libusb_claim_interface(usb->printer, uf->libusb_interface_index);
+    if (status)
+      NOTE("Failed to claim interface %d, retrying",
+           uf->libusb_interface_index);
+    switch (status) {
+      case LIBUSB_ERROR_NOT_FOUND:
+        ERR("USB Interface did not exist");
+        return -1;
+      case LIBUSB_ERROR_NO_DEVICE:
+        ERR("Printer was removed");
+        return -1;
+      default:
+        break;
+    }
+  } while (status != 0 && !g_options.terminate);
+
+  return 0;
+}
+
 struct usb_sock_t *usb_open()
 {
   int status_lock;
@@ -372,6 +409,23 @@ struct usb_sock_t *usb_open()
 	goto error;
       }
 
+      /* Try to make the kernel release the usb interface. */
+      try_detach_kernel_driver(usb, uf);
+
+      /* Try to claim the usb interface. */
+      if (try_claim_usb_interface(usb, uf)) {
+        ERR("Failed to claim usb interface #%d", uf->interface_number);
+        goto error;
+      }
+
+      /* Select the IPP-USB alt setting of the interface. */
+      if (libusb_set_interface_alt_setting(
+              usb->printer, uf->libusb_interface_index, uf->interface_alt)) {
+        ERR("Failed to set alt setting for interface #%d",
+            uf->interface_number);
+        goto error;
+      }
+
       break;
     }
   }
@@ -435,7 +489,10 @@ void usb_close(struct usb_sock_t *usb)
   NOTE("Resetting printer ...");
   libusb_reset_device(usb->printer);
   NOTE("Reset completed.");
+  NOTE("Closing device handle...");
   libusb_close(usb->printer);
+  NOTE("Closed device handle.");
+
   if (usb != NULL) {
     if (usb->context != NULL)
       libusb_exit(usb->context);
@@ -552,55 +609,6 @@ void usb_register_callback(struct usb_sock_t *usb)
     ERR("Failed to register unplug callback");
 }
 
-static void usb_conn_mark_staled(struct usb_conn_t *conn)
-{
-  if (conn->is_staled)
-    return;
-
-  struct usb_sock_t *usb = conn->parent;
-
-  sem_wait(&usb->num_staled_lock);
-  {
-    usb->num_staled++;
-  }
-  sem_post(&usb->num_staled_lock);
-
-  conn->is_staled = 1;
-}
-
-static void usb_conn_mark_moving(struct usb_conn_t *conn)
-{
-  if (!conn->is_staled)
-    return;
-
-  struct usb_sock_t *usb = conn->parent;
-
-  sem_wait(&usb->num_staled_lock);
-  {
-    usb->num_staled--;
-  }
-  sem_post(&usb->num_staled_lock);
-
-  conn->is_staled = 0;
-}
-
-static int usb_all_conns_staled(struct usb_sock_t *usb)
-{
-  int staled;
-
-  sem_wait(&usb->num_staled_lock);
-  {
-    sem_wait(&usb->pool_manage_lock);
-    {
-      staled = usb->num_staled == usb->num_taken;
-    }
-    sem_post(&usb->pool_manage_lock);
-  }
-  sem_post(&usb->num_staled_lock);
-
-  return staled;
-}
-
 struct usb_conn_t *usb_conn_acquire(struct usb_sock_t *usb)
 {
   int i;
@@ -616,7 +624,6 @@ struct usb_conn_t *usb_conn_acquire(struct usb_sock_t *usb)
       ERR("Timed out waiting for a free USB interface");
       return NULL;
     }
-    usleep(100000);
   }
 
   struct usb_conn_t *conn = calloc(1, sizeof(*conn));
@@ -643,45 +650,6 @@ struct usb_conn_t *usb_conn_acquire(struct usb_sock_t *usb)
       goto acquire_error;
     }
 
-    /* Make kernel release interface */
-    if (libusb_kernel_driver_active(usb->printer,
-				    uf->libusb_interface_index) == 1) {
-      /* Only linux supports this
-	 other platforms will fail
-	 thus we ignore the error code
-	 it either works or it does not */
-      libusb_detach_kernel_driver(usb->printer,
-				  uf->libusb_interface_index);
-    }
-
-    /* Claim the whole interface */
-    int status = 0;
-    do {
-      /* Spinlock-like
-	 Libusb does not offer a blocking call
-	 so we're left with a spinlock */
-      status = libusb_claim_interface(usb->printer, uf->libusb_interface_index);
-      if (status) NOTE("Failed to claim interface %d, retrying", conn->interface_index);
-      switch (status) {
-      case LIBUSB_ERROR_NOT_FOUND:
-	ERR("USB Interface did not exist");
-	goto acquire_error;
-      case LIBUSB_ERROR_NO_DEVICE:
-	ERR("Printer was removed");
-	goto acquire_error;
-      default:
-	break;
-      }
-    } while (status != 0 && !g_options.terminate);
-
-    if (g_options.terminate)
-      goto acquire_error;
-
-    /* Select the IPP-USB alt setting of the interface */
-    libusb_set_interface_alt_setting(usb->printer,
-				     uf->libusb_interface_index,
-				     uf->interface_alt);
-
     /* Take successfully acquired interface from the pool */
     usb->num_taken++;
     usb->num_avail--;
@@ -701,16 +669,6 @@ void usb_conn_release(struct usb_conn_t *conn)
   struct usb_sock_t *usb = conn->parent;
   sem_wait(&usb->pool_manage_lock);
   {
-    int status = 0;
-    do {
-      /* Spinlock-like
-	 libusb does not offer a blocking call
-	 so we're left with a spinlock */
-      status = libusb_release_interface(usb->printer,
-					conn->interface->libusb_interface_index);
-      if (status) NOTE("Failed to release interface %d, retrying", conn->interface_index);
-    } while (status != 0 && !g_options.terminate);
-
     /* Return usb interface to pool */
     usb->num_taken--;
     usb->num_avail++;
@@ -719,7 +677,6 @@ void usb_conn_release(struct usb_conn_t *conn)
 
     /* Release our interface lock */
     sem_post(&conn->interface->lock);
-
     free(conn);
   }
   sem_post(&usb->pool_manage_lock);
@@ -780,148 +737,18 @@ int usb_conn_packet_send(struct usb_conn_t *conn, struct http_packet_t *pkt)
   return 0;
 }
 
-struct http_packet_t *usb_conn_packet_get(struct usb_conn_t *conn, struct http_message_t *msg)
+struct libusb_transfer *setup_async_read(struct usb_conn_t *conn,
+                                         struct http_packet_t *pkt,
+                                         libusb_transfer_cb_fn callback,
+                                         void *user_data, uint32_t timeout)
 {
-  if (msg->is_completed)
+  struct libusb_transfer *transfer = libusb_alloc_transfer(0);
+  if (transfer == NULL)
     return NULL;
 
-  struct http_packet_t *pkt = packet_new(msg);
-  if (pkt == NULL) {
-    ERR("failed to create packet for incoming usb message");
-    goto cleanup;
-  }
+  libusb_fill_bulk_transfer(transfer, conn->parent->printer,
+                            conn->interface->endpoint_in, pkt->buffer,
+                            pkt->buffer_capacity, callback, user_data, timeout);
 
-  /* File packet */
-  const int timeout = 1000; /* 1 sec */
-  size_t read_size_ulong = packet_pending_bytes(pkt);
-  if (read_size_ulong == 0)
-    return pkt;
-
-  uint64_t times_staled = 0;
-  while (read_size_ulong > 0 && !msg->is_completed && !g_options.terminate) {
-    if (read_size_ulong >= INT_MAX)
-      goto cleanup;
-    int read_size = (int)read_size_ulong;
-
-    /* Pad read_size to multiple of usb's max packet size */
-    read_size += (512 - (read_size % 512)) % 512;
-
-    /* Expand buffer if needed */
-    if (pkt->buffer_capacity < pkt->filled_size + read_size_ulong)
-      if (packet_expand(pkt) < 0) {
-	ERR("Failed to ensure room for usb pkt");
-	goto cleanup;
-      }
-
-    int gotten_size = 0;
-    int status = libusb_bulk_transfer(conn->parent->printer,
-		                      conn->interface->endpoint_in,
-		                      pkt->buffer + pkt->filled_size,
-		                      read_size,
-		                      &gotten_size, timeout);
-
-    if (status == LIBUSB_ERROR_NO_DEVICE) {
-      ERR("Printer has been disconnected");
-      goto cleanup;
-    }
-
-    if (status != 0 && status != LIBUSB_ERROR_TIMEOUT) {
-      ERR("bulk xfer failed with error code %d", status);
-      ERR("tried reading %d bytes", read_size);
-      goto cleanup;
-    } else if (status == LIBUSB_ERROR_TIMEOUT) {
-      ERR("bulk xfer timed out, retrying ...");
-      ERR("tried reading %d bytes, actually read %d bytes",
-	  read_size, gotten_size);
-    }
-
-    if (gotten_size < 0) {
-      ERR("Negative read size unexpected");
-      goto cleanup;
-    }
-
-    if (gotten_size > 0) {
-      times_staled = 0;
-      usb_conn_mark_moving(conn);
-    } else {
-
-      /* Performance Test ---------------
-	 How long we sleep here has a
-	 dramatic affect on how long it
-	 takes to load a page.
-	 Earlier versions waited a tenth
-	 of a second which resulted in
-	 minute long page loads.
-	 On my HP printer the most obvious
-	 bottleneck is the "Unified.js" file
-	 which weighs 517.87KB. My profiling
-	 looked at how shortening this sleep
-	 could improve this file's load times.
-	 The cycle count is from perf and
-	 covers an entire page load.
-
-	 Below are my results:
-	 1 in    100 == 2447ms, 261M cycles
-	 1 in  1,000 == 483ms,  500M cycles
-	 5 in 10,000 == 433ms,  800M cycles
-	 1 in 10,000 == 320ms, 3000M cycles */
-      #define TIMEOUT_RATIO (10000 / 5)
-      static uint64_t stale_timeout =
-	CONN_STALE_THRESHHOLD * TIMEOUT_RATIO;
-      static uint64_t crash_timeout =
-	PRINTER_CRASH_TIMEOUT_ANSWER * TIMEOUT_RATIO;
-      static uint64_t skip_timeout  =
-	1000000000 / TIMEOUT_RATIO;
-
-      struct timespec sleep_dur;
-      sleep_dur.tv_sec = 0;
-      sleep_dur.tv_nsec = skip_timeout;
-      nanosleep(&sleep_dur, NULL);
-
-      if (status == LIBUSB_ERROR_TIMEOUT)
-	times_staled += TIMEOUT_RATIO * timeout / 1000;
-      else
-	times_staled++;
-      if (times_staled % TIMEOUT_RATIO == 0 ||
-	  status == LIBUSB_ERROR_TIMEOUT) {
-	NOTE("No bytes received for %d sec.",
-	     times_staled / TIMEOUT_RATIO);
-	if (pkt->filled_size > 0)
-	  NOTE("Packet so far \n===\n%s===\n",
-	       hexdump(pkt->buffer,
-		       pkt->filled_size));
-      }
- 
-      if (times_staled > stale_timeout) {
-	usb_conn_mark_staled(conn);
-
-	if (pkt->filled_size > 0 ||
-	    usb_all_conns_staled(conn->parent) ||
-	    times_staled > crash_timeout) {
-	  ERR("USB timed out, giving up waiting for more data");
-	  break;
-	}
-      }
-    }
-
-    if (gotten_size) {
-      NOTE("USB: Getting %d bytes of %d",
-	   read_size, pkt->expected_size);
-      NOTE("USB: Got %d bytes", gotten_size);
-    }
-    packet_mark_received(pkt, (size_t)gotten_size);
-    read_size_ulong = packet_pending_bytes(pkt);
-  }
-  NOTE("USB: Received %d bytes of %d with type %d",
-       pkt->filled_size, pkt->expected_size, msg->type);
-
-  if (pkt->filled_size == 0)
-    goto cleanup;
-
-  return pkt;
-
- cleanup:
-  if (pkt != NULL)
-    packet_free(pkt);
-  return NULL;
+  return transfer;
 }
