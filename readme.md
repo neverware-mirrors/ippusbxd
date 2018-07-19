@@ -1,6 +1,6 @@
 # IPPUSBXD [![Coverity analysis status](https://scan.coverity.com/projects/2634/badge.svg)](https://scan.coverity.com/projects/2634)
 
-Version 1.31
+Version 1.33
 
 ## About
 
