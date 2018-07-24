@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <pthread.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -30,10 +31,10 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "options.h"
+#include "http.h"
 #include "logging.h"
+#include "options.h"
 #include "tcp.h"
-
 
 struct tcp_sock_t *tcp_open(uint16_t port, char* interface)
 {
@@ -221,56 +222,37 @@ uint16_t tcp_port_number_get(struct tcp_sock_t *sock)
   return 0;
 }
 
-struct http_packet_t *tcp_packet_get(struct tcp_conn_t *tcp,
-                                     struct http_message_t *msg)
+struct http_packet_t *tcp_packet_get(struct tcp_conn_t *tcp)
 {
-  /* Alloc packet ==---------------------------------------------------== */
-  struct http_packet_t *pkt = packet_new(msg);
+  /* Allocate packet for incoming message. */
+  struct http_packet_t *pkt = packet_new();
   if (pkt == NULL) {
     ERR("failed to create packet for incoming tcp message");
     goto error;
   }
 
-  size_t want_size = packet_pending_bytes(pkt);
-  if (want_size == 0) {
-    NOTE("TCP: Got %lu from spare buffer", pkt->filled_size);
-    return pkt;
-  }
-
   struct timeval tv;
   tv.tv_sec = 3;
   tv.tv_usec = 0;
-  setsockopt(tcp->sd, SOL_SOCKET, SO_RCVTIMEO,
-	     (char *)&tv, sizeof(struct timeval));
-
-  while (want_size != 0 && !msg->is_completed && !g_options.terminate) {
-    NOTE("TCP: Getting %d bytes", want_size);
-    uint8_t *subbuffer = pkt->buffer + pkt->filled_size;
-    ssize_t gotten_size = recv(tcp->sd, subbuffer, want_size, 0);
-    if (gotten_size < 0) {
-      int errno_saved = errno;
-      ERR("recv failed with err %d:%s", errno_saved,
-	  strerror(errno_saved));
-      tcp->is_closed = 1;
-      goto error;
-    }
-    NOTE("TCP: Got %d bytes", gotten_size);
-    if (gotten_size == 0) {
-      tcp->is_closed = 1;
-      if (pkt->filled_size == 0) {
-	/* Client closed TCP conn */
-	goto error;
-      } else {
-	break;
-      }
-    }
-
-    packet_mark_received(pkt, (unsigned) gotten_size);
-    want_size = packet_pending_bytes(pkt);
-    NOTE("TCP: Want more %d bytes; Message %scompleted", want_size, msg->is_completed ? "" : "not ");
+  if (setsockopt(tcp->sd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
+    ERR("TCP: Setting options for tcp connection socket failed");
+    goto error;
   }
 
-  NOTE("TCP: Received %lu bytes", pkt->filled_size);
+  ssize_t gotten_size = recv(tcp->sd, pkt->buffer, pkt->buffer_capacity, 0);
+
+  if (gotten_size < 0) {
+    int errno_saved = errno;
+    ERR("recv failed with err %d:%s", errno_saved, strerror(errno_saved));
+    tcp->is_closed = 1;
+    goto error;
+  }
+
+  if (gotten_size == 0) {
+    tcp->is_closed = 1;
+  }
+
+  pkt->filled_size = gotten_size;
   return pkt;
 
  error:
@@ -283,9 +265,10 @@ int tcp_packet_send(struct tcp_conn_t *conn, struct http_packet_t *pkt)
 {
   size_t remaining = pkt->filled_size;
   size_t total = 0;
+
   while (remaining > 0 && !g_options.terminate) {
-    ssize_t sent = send(conn->sd, pkt->buffer + total,
-			remaining, MSG_NOSIGNAL);
+    ssize_t sent = send(conn->sd, pkt->buffer + total, remaining, MSG_NOSIGNAL);
+
     if (sent < 0) {
       if (errno == EPIPE) {
 	conn->is_closed = 1;
@@ -295,13 +278,14 @@ int tcp_packet_send(struct tcp_conn_t *conn, struct http_packet_t *pkt)
       return -1;
     }
 
-    size_t sent_ulong = (unsigned) sent;
-    total += sent_ulong;
-    if (sent_ulong >= remaining)
+    size_t sent_unsigned = (size_t)sent;
+    total += sent_unsigned;
+    if (sent_unsigned >= remaining)
       remaining = 0;
     else
-      remaining -= sent_ulong;
+      remaining -= sent_unsigned;
   }
+
   NOTE("TCP: sent %lu bytes", total);
   return 0;
 }
@@ -315,6 +299,7 @@ struct tcp_conn_t *tcp_conn_select(struct tcp_sock_t *sock,
     ERR("Calloc for connection struct failed");
     goto error;
   }
+
   fd_set rfds;
   int retval = 0;
   int nfds = 0;
@@ -354,6 +339,11 @@ struct tcp_conn_t *tcp_conn_select(struct tcp_sock_t *sock,
     ERR("accept failed");
     goto error;
   }
+
+  /* Attempt to initialize the connection's mutex. */
+  if (pthread_mutex_init(&conn->mutex, NULL))
+    goto error;
+
   return conn;
 
  error:
@@ -371,5 +361,56 @@ void tcp_conn_close(struct tcp_conn_t *conn)
   shutdown(conn->sd, SHUT_RDWR);
 
   close(conn->sd);
+  pthread_mutex_destroy(&conn->mutex);
   free(conn);
+}
+
+/* Poll the tcp socket to determine if it is ready to transmit data. */
+int poll_tcp_socket(struct tcp_conn_t *tcp)
+{
+  struct pollfd poll_fd;
+  poll_fd.fd = tcp->sd;
+  poll_fd.events = POLLIN;
+  const int nfds = 1;
+  const int timeout = 5000;  /* 5 seconds. */
+
+  int result = poll(&poll_fd, nfds, timeout);
+  if (result < 0) {
+    ERR("poll failed with error %d:%s", errno, strerror(errno));
+    tcp->is_closed = 1;
+  } else if (result == 0) {
+    /* In the case where the poll timed out, check to see whether or not data
+     * has recently been sent from the printer along the socket. If so, then we
+     * keep the connection alive an reset the is_active flag. Otherwise, close
+     * the connection. */
+    if (get_is_active(tcp)) {
+      set_is_active(tcp, 0);
+    } else {
+      tcp->is_closed = 1;
+    }
+  } else {
+    if (poll_fd.revents != POLLIN) {
+      ERR("poll returned an unexpected event");
+      tcp->is_closed = 1;
+      return -1;
+    }
+  }
+
+  return result;
+}
+
+int get_is_active(struct tcp_conn_t *tcp)
+{
+  pthread_mutex_lock(&tcp->mutex);
+  int val = tcp->is_active;
+  pthread_mutex_unlock(&tcp->mutex);
+
+  return val;
+}
+
+void set_is_active(struct tcp_conn_t *tcp, int val)
+{
+  pthread_mutex_lock(&tcp->mutex);
+  tcp->is_active = val;
+  pthread_mutex_unlock(&tcp->mutex);
 }
