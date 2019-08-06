@@ -44,6 +44,12 @@ struct service_thread_param {
 
 struct libusb_callback_data {
   int *read_inflight;
+  /*
+   * Indicates that the previous read response was empty. This is used to
+   * perform exponential backoff in service_printer_connection() to avoid
+   * overloading the printer with read requests when there is nothing to read.
+   */
+  int *empty_response;
   uint32_t thread_num;
   struct tcp_conn_t *tcp;
   struct http_packet_t *pkt;
@@ -72,16 +78,25 @@ static int get_read_inflight(const int *read_inflight,
                              pthread_mutex_t *read_inflight_mutex);
 
 static struct libusb_callback_data *setup_libusb_callback_data(
-    struct http_packet_t *pkt, int *read_inflight,
+    struct http_packet_t *pkt, int *read_inflight, int *empty_response,
     struct service_thread_param *thread_param,
     pthread_mutex_t *read_inflight_mutex);
 
 static int is_socket_open(const struct service_thread_param *param);
 
+static int update_backoff(int backoff);
+
 /* Global variables */
 static pthread_mutex_t thread_register_mutex;
 static struct service_thread_param **service_threads = NULL;
 static uint32_t num_service_threads = 0;
+
+/* Constants */
+
+/* Times to wait in milliseconds before sending another read request to the
+   printer. */
+const int initial_backoff = 100;
+const int maximum_backoff = 1000;
 
 static void sigterm_handler(int sig)
 {
@@ -202,10 +217,12 @@ static void read_transfer_callback(struct libusb_transfer *transfer)
         NOTE("Thread #%u: Pkt from %s (buffer size: %zu)\n===\n%s===", thread_num,
              "usb", user_data->pkt->filled_size,
              hexdump(user_data->pkt->buffer, (int)user_data->pkt->filled_size));
-
         tcp_packet_send(user_data->tcp, user_data->pkt);
         /* Mark the tcp socket as active. */
         set_is_active(user_data->tcp, 1);
+      } else {
+        /* Set that we received an empty response from the printer. */
+        *user_data->empty_response = 1;
       }
 
       break;
@@ -405,7 +422,13 @@ static void *service_printer_connection(void *params_void)
   /* Register clean-up handler. */
   pthread_cleanup_push(cleanup_handler, &thread_num);
 
+  /* Amount of time to wait in milliseconds before sending another read request
+     if we received a 0-byte response from the printer. */
+  int backoff = initial_backoff;
+
   int read_inflight = 0;
+  int empty_response = 0;
+
   pthread_mutex_t read_inflight_mutex;
   if (pthread_mutex_init(&read_inflight_mutex, NULL))
     goto cleanup;
@@ -426,6 +449,23 @@ static void *service_printer_connection(void *params_void)
     if (!is_socket_open(params) || g_options.terminate)
       break;
 
+    /* If we received an empty response from the printer then wait for |backoff|
+       milliseconds and update the backoff period. */
+    if (empty_response) {
+      /* usleep accepts microseconds. */
+      usleep(backoff * 1000);
+      backoff = update_backoff(backoff);
+      /* Reset the empty response indicator before sending the next read
+         request. A mutex should not be needed here since the transfer callback
+         won't be fired until after calling libusb_submit_transfer(). */
+      empty_response = 0;
+    } else {
+      /* If we received a non-empty response from the printer then reset the
+         backoff to its initial value. */
+      backoff = initial_backoff;
+    }
+
+    NOTE("Thread #%u: No read in flight, starting a new one", thread_num);
     struct http_packet_t *pkt = packet_new();
     if (pkt == NULL) {
       ERR("Thread #%u: Failed to allocate packet", thread_num);
@@ -433,7 +473,7 @@ static void *service_printer_connection(void *params_void)
     }
 
     struct libusb_callback_data *user_data = setup_libusb_callback_data(
-        pkt, &read_inflight, params, &read_inflight_mutex);
+        pkt, &read_inflight, &empty_response, params, &read_inflight_mutex);
 
     if (user_data == NULL) {
       ERR("Thread #%u: Failed to allocate memory for libusb_callback_data",
@@ -590,7 +630,7 @@ static int setup_communication_thread(void *(*routine)(void *),
 }
 
 static struct libusb_callback_data *setup_libusb_callback_data(
-    struct http_packet_t *pkt, int *read_inflight,
+    struct http_packet_t *pkt, int *read_inflight, int *empty_response,
     struct service_thread_param *thread_param,
     pthread_mutex_t *read_inflight_mutex) {
   struct libusb_callback_data *data = calloc(1, sizeof(*data));
@@ -599,12 +639,22 @@ static struct libusb_callback_data *setup_libusb_callback_data(
 
   data->pkt = pkt;
   data->read_inflight = read_inflight;
+  data->empty_response = empty_response;
   data->thread_num = thread_param->thread_num;
   data->read_inflight_mutex = read_inflight_mutex;
   data->read_inflight_cond = thread_param->cond;
   data->tcp = thread_param->tcp;
 
   return data;
+}
+
+static int update_backoff(int backoff) {
+  int updated = backoff * 2;
+  /* Cap the maximum backoff time at 1 second. */
+  if (updated > maximum_backoff) {
+    updated = maximum_backoff;
+  }
+  return updated;
 }
 
 static int is_socket_open(const struct service_thread_param *param) {
