@@ -13,90 +13,31 @@
  * limitations under the License. */
 
 #define _GNU_SOURCE
+
+#include "ippusbxd.h"
+
+#include <errno.h>
+#include <getopt.h>
+#include <libusb.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
-#include <signal.h>
-
 #include <unistd.h>
-#include <getopt.h>
-#include <pthread.h>
-#include <errno.h>
 
-#include <libusb.h>
-
-#include "options.h"
-#include "logging.h"
+#include "dnssd.h"
 #include "http.h"
+#include "logging.h"
+#include "options.h"
 #include "tcp.h"
 #include "usb.h"
-#include "dnssd.h"
-
-struct service_thread_param {
-  struct tcp_conn_t *tcp;
-  struct usb_sock_t *usb_sock;
-  struct usb_conn_t *usb_conn;
-  pthread_t thread_handle;
-  uint32_t thread_num;
-  pthread_cond_t *cond;
-};
-
-struct libusb_callback_data {
-  int *read_inflight;
-  /*
-   * Indicates that the previous read response was empty. This is used to
-   * perform exponential backoff in service_printer_connection() to avoid
-   * overloading the printer with read requests when there is nothing to read.
-   */
-  int *empty_response;
-  uint32_t thread_num;
-  struct tcp_conn_t *tcp;
-  struct http_packet_t *pkt;
-  pthread_mutex_t *read_inflight_mutex;
-  pthread_cond_t *read_inflight_cond;
-};
-
-/* Function prototypes */
-static void *service_connection(void *params_void);
-
-static void service_socket_connection(struct service_thread_param *params);
-
-static void *service_printer_connection(void *params_void);
-
-static int allocate_socket_connection(struct service_thread_param *param);
-
-static int setup_socket_connection(struct service_thread_param *param);
-
-static int setup_usb_connection(struct usb_sock_t *usb_sock,
-                                struct service_thread_param *param);
-
-static int setup_communication_thread(void *(*routine)(void *),
-                                      struct service_thread_param *param);
-
-static int get_read_inflight(const int *read_inflight,
-                             pthread_mutex_t *read_inflight_mutex);
-
-static struct libusb_callback_data *setup_libusb_callback_data(
-    struct http_packet_t *pkt, int *read_inflight, int *empty_response,
-    struct service_thread_param *thread_param,
-    pthread_mutex_t *read_inflight_mutex);
-
-static int is_socket_open(const struct service_thread_param *param);
-
-static int update_backoff(int backoff);
 
 /* Global variables */
 static pthread_mutex_t thread_register_mutex;
 static struct service_thread_param **service_threads = NULL;
 static uint32_t num_service_threads = 0;
-
-/* Constants */
-
-/* Times to wait in milliseconds before sending another read request to the
-   printer. */
-const int initial_backoff = 100;
-const int maximum_backoff = 1000;
 
 static void sigterm_handler(int sig)
 {
@@ -272,16 +213,7 @@ static void read_transfer_callback(struct libusb_transfer *transfer)
   libusb_free_transfer(transfer);
 }
 
-/* This function is responsible for handling connection requests and
-   is run in a separate thread. It detaches itself from the main thread and sets
-   up a USB connection with the printer. This function spawns a partner thread
-   which is responsible for reading from the printer, and then this function
-   calls into service_socket_connection() which is responsible for reading from
-   the socket which made the connection request. Once the socket has closed its
-   end of communiction, this function notifies its partner thread that the
-   connection has been closed and then joins on the partner thread before
-   shutting down. */
-static void *service_connection(void *params_void)
+void *service_connection(void *params_void)
 {
   struct service_thread_param *params =
       (struct service_thread_param *)params_void;
@@ -354,8 +286,7 @@ cleanup:
   pthread_exit(NULL);
 }
 
-/* Reads from the socket and writes data to the printer. */
-static void service_socket_connection(struct service_thread_param *params)
+void service_socket_connection(struct service_thread_param *params)
 {
   uint32_t thread_num = params->thread_num;
 
@@ -390,30 +321,7 @@ static void service_socket_connection(struct service_thread_param *params)
   }
 }
 
-/* Returns the value of |read_inflight|. Uses a mutex since another thread which
-   is processing the asynchronous transfer may change the value once the
-   transfer is complete. */
-static int get_read_inflight(const int *read_inflight, pthread_mutex_t *mtx)
-{
-  pthread_mutex_lock(mtx);
-  int val = *read_inflight;
-  pthread_mutex_unlock(mtx);
-
-  return val;
-}
-
-/* Sets the value of |read_inflight| to |val|. Uses a mutex since another thread
-   which is processing the asynchronous transfer may change the value once the
-   transfer is complete. */
-static void set_read_inflight(int val, pthread_mutex_t *mtx, int *read_inflight)
-{
-  pthread_mutex_lock(mtx);
-  *read_inflight = val;
-  pthread_mutex_unlock(mtx);
-}
-
-/* Reads from the printer and writes to the socket. */
-static void *service_printer_connection(void *params_void)
+void *service_printer_connection(void *params_void)
 {
   struct service_thread_param *params =
       (struct service_thread_param *)params_void;
@@ -558,10 +466,7 @@ static uint16_t open_tcp_socket(void)
   return desired_port;
 }
 
-/* Attempts to allocate space for a tcp socket. If the allocation is
-   successful then a value of 0 is returned, otherwise a non-zero value is
-   returned. */
-static int allocate_socket_connection(struct service_thread_param *param)
+int allocate_socket_connection(struct service_thread_param *param)
 {
   param->tcp = calloc(1, sizeof(*param->tcp));
 
@@ -574,10 +479,7 @@ static int allocate_socket_connection(struct service_thread_param *param)
   return 0;
 }
 
-/* Attempts to setup a connection for to a tcp socket. Returns a 0 value on
-   success and a non-zero value if something went wrong attempting to establish
-   the connection. */
-static int setup_socket_connection(struct service_thread_param *param)
+int setup_socket_connection(struct service_thread_param *param)
 {
   param->tcp = tcp_conn_select(g_options.tcp_socket, g_options.tcp6_socket);
   if (g_options.terminate || param->tcp == NULL)
@@ -585,11 +487,7 @@ static int setup_socket_connection(struct service_thread_param *param)
   return 0;
 }
 
-/* Attempt to create a new usb_conn_t and assign it to |param| by acquiring an
-   available usb interface. Returns 0 if the creating on the connection struct
-   was successful, and non-zero if there was an error attempting to acquire the
-   interface. */
-static int setup_usb_connection(struct usb_sock_t *usb_sock,
+int setup_usb_connection(struct usb_sock_t *usb_sock,
                                 struct service_thread_param *param)
 {
   param->usb_conn = usb_conn_acquire(usb_sock);
@@ -601,11 +499,8 @@ static int setup_usb_connection(struct usb_sock_t *usb_sock,
   return 0;
 }
 
-/* Attempt to register a new communication thread to execute the function
-   |routine| with the given |params|. If successful a 0 value is returned,
-   otherwise a non-zero value is returned. */
-static int setup_communication_thread(void *(*routine)(void *),
-                                      struct service_thread_param *param)
+int setup_communication_thread(void *(*routine)(void *),
+                               struct service_thread_param *param)
 {
   pthread_mutex_lock(&thread_register_mutex);
   register_service_thread(&num_service_threads, &service_threads, param);
@@ -629,10 +524,11 @@ static int setup_communication_thread(void *(*routine)(void *),
   return 0;
 }
 
-static struct libusb_callback_data *setup_libusb_callback_data(
+struct libusb_callback_data *setup_libusb_callback_data(
     struct http_packet_t *pkt, int *read_inflight, int *empty_response,
     struct service_thread_param *thread_param,
-    pthread_mutex_t *read_inflight_mutex) {
+    pthread_mutex_t *read_inflight_mutex)
+{
   struct libusb_callback_data *data = calloc(1, sizeof(*data));
   if (data == NULL)
     return NULL;
@@ -648,17 +544,33 @@ static struct libusb_callback_data *setup_libusb_callback_data(
   return data;
 }
 
-static int update_backoff(int backoff) {
+int get_read_inflight(const int *read_inflight, pthread_mutex_t *mtx)
+{
+  pthread_mutex_lock(mtx);
+  int val = *read_inflight;
+  pthread_mutex_unlock(mtx);
+
+  return val;
+}
+
+void set_read_inflight(int val, pthread_mutex_t *mtx, int *read_inflight)
+{
+  pthread_mutex_lock(mtx);
+  *read_inflight = val;
+  pthread_mutex_unlock(mtx);
+}
+
+int is_socket_open(const struct service_thread_param *param) {
+  return !param->tcp->is_closed;
+}
+
+int update_backoff(int backoff) {
   int updated = backoff * 2;
   /* Cap the maximum backoff time at 1 second. */
   if (updated > maximum_backoff) {
     updated = maximum_backoff;
   }
   return updated;
-}
-
-static int is_socket_open(const struct service_thread_param *param) {
-  return !param->tcp->is_closed;
 }
 
 static void start_daemon()
