@@ -53,21 +53,28 @@ static void list_service_threads(
   uint32_t i;
   char *p;
   char buf[10240];
+  size_t written = 0;
 
-  snprintf(buf, sizeof(buf), "Threads currently running: ");
-  p = buf + strlen(buf);
+  /* Set all bytes in |buf| to the null terminator so that we don't have to
+     worry about it later. */
+  memset(buf, '\0', sizeof(buf));
+
+  written += snprintf(buf, sizeof(buf), "Threads currently running: ");
+  p = buf + written;
+
   if (num_service_threads == 0) {
-    snprintf(p, sizeof(buf) - strlen(buf), "None");
+    written += snprintf(p, sizeof(buf) - written, "None");
   } else {
-    for (i = 0; i < num_service_threads; i ++) {
-      snprintf(p, sizeof(buf) - strlen(buf), "#%u, ",
-	       service_threads[i]->thread_num);
-      p = buf + strlen(buf);
+    for (i = 0; i < num_service_threads; i++) {
+      written += snprintf(p, sizeof(buf) - written, "#%u",
+                          service_threads[i]->thread_num);
+      p = buf + written;
+      if (i + 1 < num_service_threads) {
+        written += snprintf(p, sizeof(buf) - written, ", ");
+        p = buf + written;
+      }
     }
-    p -= 2;
-    *p = '\0';
   }
-  buf[sizeof(buf) - 1] = '\0';
   NOTE("%s", buf);
 }
 
@@ -155,8 +162,8 @@ static void read_transfer_callback(struct libusb_transfer *transfer)
       user_data->pkt->filled_size = transfer->actual_length;
 
       if (transfer->actual_length) {
-        NOTE("Thread #%u: Pkt from %s (buffer size: %zu)\n===\n%s===", thread_num,
-             "usb", user_data->pkt->filled_size,
+        NOTE("Thread #%u: Pkt from %s (buffer size: %zu)\n===\n%s===",
+             thread_num, "usb", user_data->pkt->filled_size,
              hexdump(user_data->pkt->buffer, (int)user_data->pkt->filled_size));
         tcp_packet_send(user_data->tcp, user_data->pkt);
         /* Mark the tcp socket as active. */
@@ -488,7 +495,7 @@ int setup_socket_connection(struct service_thread_param *param)
 }
 
 int setup_usb_connection(struct usb_sock_t *usb_sock,
-                                struct service_thread_param *param)
+                         struct service_thread_param *param)
 {
   param->usb_conn = usb_conn_acquire(usb_sock);
   if (param->usb_conn == NULL) {
@@ -602,8 +609,8 @@ static void start_daemon()
   printf("%u|", g_options.real_port);
   fflush(stdout);
 
-  NOTE("Port: %d, IPv4 %savailable, IPv6 %savailable",
-       g_options.real_port, g_options.tcp_socket ? "" : "not ", g_options.tcp6_socket ? "" : "not ");
+  NOTE("Port: %d, IPv4 %savailable, IPv6 %savailable", g_options.real_port,
+       g_options.tcp_socket ? "" : "not ", g_options.tcp6_socket ? "" : "not ");
 
   /* Lose connection to caller */
   uint16_t pid;
