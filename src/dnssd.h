@@ -25,7 +25,15 @@ typedef struct dnssd_s {
   AvahiEntryGroup   *ipp_ref;
 } dnssd_t;
 
+/* Initializes DNS-SD broadcasting. Returns 0 on success and a non-zero value if
+   there is a failure. */
 int dnssd_init();
+
+/* Shutdown DNS-SD broadcasting. */
 void dnssd_shutdown();
-int dnssd_register();
+
+/* Register a printer object via DNS-SD. */
+int dnssd_register(AvahiClient *c);
+
+/* Unregister a printer object from DNS-SD. */
 void dnssd_unregister();

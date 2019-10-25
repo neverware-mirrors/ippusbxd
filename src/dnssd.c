@@ -26,10 +26,10 @@
  * 'dnssd_callback()' - Handle DNS-SD registration events.
  */
 
-static void
-dnssd_callback(AvahiEntryGroup      *g,		/* I - Service */
-	       AvahiEntryGroupState state,	/* I - Registration state */
-	       void                 *context)	/* I - Printer */
+static void dnssd_callback(
+    AvahiEntryGroup *g,         /* I - Service */
+    AvahiEntryGroupState state, /* I - Registration state */
+    void *context)              /* I - Printer */
 {
   (void)context;
 
@@ -56,7 +56,6 @@ dnssd_callback(AvahiEntryGroup      *g,		/* I - Service */
     break;
   }
 }
-
 
 /*
  * 'dnssd_client_cb()' - Client callback for Avahi.
@@ -121,10 +120,9 @@ dnssd_client_cb(AvahiClient      *c,		/* I - Client */
   }
 }
 
-int
-dnssd_init()
+int dnssd_init()
 {
-  int error;			/* Error code, if any */
+  int error; /* Error code, if any */
 
   g_options.dnssd_data = calloc(1, sizeof(dnssd_t));
   if (g_options.dnssd_data == NULL) {
@@ -140,10 +138,9 @@ dnssd_init()
     goto fail;
   }
 
-  if ((g_options.dnssd_data->DNSSDClient =
-       avahi_client_new(avahi_threaded_poll_get(g_options.dnssd_data->DNSSDMaster),
-			AVAHI_CLIENT_NO_FAIL,
-			dnssd_client_cb, NULL, &error)) == NULL) {
+  if ((g_options.dnssd_data->DNSSDClient = avahi_client_new(
+           avahi_threaded_poll_get(g_options.dnssd_data->DNSSDMaster),
+           AVAHI_CLIENT_NO_FAIL, dnssd_client_cb, NULL, &error)) == NULL) {
     ERR("Error: Unable to initialize DNS-SD client.");
     goto fail;
   }
@@ -160,9 +157,8 @@ dnssd_init()
   return -1;
 }
 
-void
-dnssd_shutdown() {
-
+void dnssd_shutdown()
+{
   if (g_options.dnssd_data->DNSSDMaster) {
     avahi_threaded_poll_stop(g_options.dnssd_data->DNSSDMaster);
     dnssd_unregister();
@@ -182,12 +178,7 @@ dnssd_shutdown() {
   NOTE("DNS-SD shut down.");
 }
 
-/*
- * 'dnssd_register()' - Register a printer object via DNS-SD.
- */
-
-int
-dnssd_register(AvahiClient *c)
+int dnssd_register(AvahiClient *c)
 {
   AvahiStringList *ipp_txt;             /* DNS-SD IPP TXT record */
   char            temp[256];            /* Subtype service string */
@@ -335,7 +326,8 @@ dnssd_register(AvahiClient *c)
   if (urf)
     ipp_txt = avahi_string_list_add_printf(ipp_txt, "URF=%s", urf);
   else if (appleraster)
-    ipp_txt = avahi_string_list_add_printf(ipp_txt, "URF=CP1,IS1,MT1,RS300,SRGB24,W8");
+    ipp_txt = avahi_string_list_add_printf(ipp_txt,
+                                           "URF=CP1,IS1,MT1,RS300,SRGB24,W8");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "priority=60");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "txtvers=1");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "qtotal=1");
@@ -359,15 +351,11 @@ dnssd_register(AvahiClient *c)
     return -1;
   }
 
-  error =
-    avahi_entry_group_add_service_strlst(g_options.dnssd_data->ipp_ref,
-					 (g_options.interface ?
-					  (int)if_nametoindex(g_options.interface) :
-					  AVAHI_IF_UNSPEC),
-					 AVAHI_PROTO_UNSPEC, 0,
-					 dnssd_name,
-					 "_printer._tcp", NULL, NULL, 0,
-					 NULL);
+  error = avahi_entry_group_add_service_strlst(
+      g_options.dnssd_data->ipp_ref,
+      (g_options.interface ? (int)if_nametoindex(g_options.interface)
+                           : AVAHI_IF_UNSPEC),
+      AVAHI_PROTO_UNSPEC, 0, dnssd_name, "_printer._tcp", NULL, NULL, 0, NULL);
   if (error)
     ERR("Error registering %s as Unix printer (_printer._tcp): %d", dnssd_name,
 	error);
@@ -378,72 +366,66 @@ dnssd_register(AvahiClient *c)
   * Then register the _ipp._tcp (IPP)...
   */
 
-  error =
-    avahi_entry_group_add_service_strlst(g_options.dnssd_data->ipp_ref,
-					 (g_options.interface ?
-					  (int)if_nametoindex(g_options.interface) :
-					  AVAHI_IF_UNSPEC),
-					 AVAHI_PROTO_UNSPEC, 0,
-					 dnssd_name,
-					 "_ipp._tcp", NULL, NULL, g_options.real_port,
-					 ipp_txt);
-  if (error)
+  error = avahi_entry_group_add_service_strlst(
+      g_options.dnssd_data->ipp_ref,
+      (g_options.interface ? (int)if_nametoindex(g_options.interface)
+                           : AVAHI_IF_UNSPEC),
+      AVAHI_PROTO_UNSPEC, 0, dnssd_name, "_ipp._tcp", NULL, NULL,
+      g_options.real_port, ipp_txt);
+
+  if (error) {
     ERR("Error registering %s as IPP printer (_ipp._tcp): %d", dnssd_name,
 	error);
-  else {
+  } else {
     NOTE("Registered %s as IPP printer (_ipp._tcp).", dnssd_name);
-    error =
-      avahi_entry_group_add_service_subtype(g_options.dnssd_data->ipp_ref,
-					    (g_options.interface ?
-					     (int)if_nametoindex(g_options.interface) :
-					     AVAHI_IF_UNSPEC),
-					    AVAHI_PROTO_UNSPEC, 0,
-					    dnssd_name,
-					    "_ipp._tcp", NULL,
-					    (appleraster && !pwgraster ?
-					     "_universal._sub._ipp._tcp" :
-					     "_print._sub._ipp._tcp"));
+    error = avahi_entry_group_add_service_subtype(
+        g_options.dnssd_data->ipp_ref,
+        (g_options.interface ? (int)if_nametoindex(g_options.interface)
+                             : AVAHI_IF_UNSPEC),
+        AVAHI_PROTO_UNSPEC, 0, dnssd_name, "_ipp._tcp", NULL,
+        (appleraster && !pwgraster ? "_universal._sub._ipp._tcp"
+                                   : "_print._sub._ipp._tcp"));
     if (error)
-      ERR("Error registering subtype for IPP printer %s (_print._sub._ipp._tcp or _universal._sub._ipp._tcp): %d",
-	  dnssd_name, error);
+      ERR("Error registering subtype for IPP printer %s (_print._sub._ipp._tcp "
+          "or _universal._sub._ipp._tcp): %d",
+          dnssd_name, error);
     else
-      NOTE("Registered subtype for IPP printer %s (_print._sub._ipp._tcp or _universal._sub._ipp._tcp).",
-	   dnssd_name);
+      NOTE(
+          "Registered subtype for IPP printer %s (_print._sub._ipp._tcp or "
+          "_universal._sub._ipp._tcp).",
+          dnssd_name);
   }
 
  /*
   * Finally _http.tcp (HTTP) for the web interface...
   */
 
-  error =
-    avahi_entry_group_add_service_strlst(g_options.dnssd_data->ipp_ref,
-					 (g_options.interface ?
-					  (int)if_nametoindex(g_options.interface) :
-					  AVAHI_IF_UNSPEC),
-					 AVAHI_PROTO_UNSPEC, 0,
-					 dnssd_name,
-					 "_http._tcp", NULL, NULL, g_options.real_port,
-					 NULL);
-  if (error)
+  error = avahi_entry_group_add_service_strlst(
+      g_options.dnssd_data->ipp_ref,
+      (g_options.interface ? (int)if_nametoindex(g_options.interface)
+                           : AVAHI_IF_UNSPEC),
+      AVAHI_PROTO_UNSPEC, 0, dnssd_name, "_http._tcp", NULL, NULL,
+      g_options.real_port, NULL);
+  if (error) {
     ERR("Error registering web interface of %s (_http._tcp): %d", dnssd_name,
 	error);
-  else {
+  } else {
     NOTE("Registered web interface of %s (_http._tcp).", dnssd_name);
-    error =
-      avahi_entry_group_add_service_subtype(g_options.dnssd_data->ipp_ref,
-					    (g_options.interface ?
-					     (int)if_nametoindex(g_options.interface) :
-					     AVAHI_IF_UNSPEC),
-					    AVAHI_PROTO_UNSPEC, 0,
-					    dnssd_name,
-					    "_http._tcp", NULL,
-					    "_printer._sub._http._tcp");
+    error = avahi_entry_group_add_service_subtype(
+        g_options.dnssd_data->ipp_ref,
+        (g_options.interface ? (int)if_nametoindex(g_options.interface)
+                             : AVAHI_IF_UNSPEC),
+        AVAHI_PROTO_UNSPEC, 0, dnssd_name, "_http._tcp", NULL,
+        "_printer._sub._http._tcp");
     if (error)
-      ERR("Error registering subtype for web interface of %s (_printer._sub._http._tcp): %d",
-	  dnssd_name, error);
+      ERR("Error registering subtype for web interface of %s "
+          "(_printer._sub._http._tcp): %d",
+          dnssd_name, error);
     else
-      NOTE("Registered subtype for web interface of %s (_printer._sub._http._tcp).",
-	   dnssd_name);
+      NOTE(
+          "Registered subtype for web interface of %s "
+          "(_printer._sub._http._tcp).",
+          dnssd_name);
   }
 
  /*
@@ -457,12 +439,7 @@ dnssd_register(AvahiClient *c)
   return 0;
 }
 
-/*
- * 'dnssd_unregister()' - Unregister a printer object from DNS-SD.
- */
-
-void
-dnssd_unregister()
+void dnssd_unregister()
 {
   if (g_options.dnssd_data->ipp_ref) {
     avahi_entry_group_free(g_options.dnssd_data->ipp_ref);
