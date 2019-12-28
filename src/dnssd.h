@@ -23,6 +23,7 @@ typedef struct dnssd_s {
   AvahiThreadedPoll *DNSSDMaster;
   AvahiClient       *DNSSDClient;
   AvahiEntryGroup   *ipp_ref;
+  AvahiEntryGroup   *uscan_ref;
 } dnssd_t;
 
 /* Initializes DNS-SD broadcasting. Returns 0 on success and a non-zero value if

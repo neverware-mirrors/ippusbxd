@@ -23,20 +23,13 @@
 #include "options.h"
 
 /*
- * 'dnssd_callback()' - Handle DNS-SD registration events.
+ * 'dnssd_callback()' - Handle DNS-SD registration events generic.
  */
 
-static void dnssd_callback(
-    AvahiEntryGroup *g,         /* I - Service */
-    AvahiEntryGroupState state, /* I - Registration state */
-    void *context)              /* I - Printer */
+static void
+dnssd_callback(AvahiEntryGroup      *g,		/* I - Service */
+	       AvahiEntryGroupState state)	/* I - Registration state */
 {
-  (void)context;
-
-  if (g == NULL || (g_options.dnssd_data->ipp_ref != NULL &&
-		    g_options.dnssd_data->ipp_ref != g))
-    return;
-
   switch (state) {
   case AVAHI_ENTRY_GROUP_ESTABLISHED :
     /* The entry group has been established successfully */
@@ -55,6 +48,40 @@ static void dnssd_callback(
   default:
     break;
   }
+}
+
+/*
+ * 'dnssd_callback()' - Handle DNS-SD registration events ipp.
+ */
+
+static void
+dnssd_callback_ipp(AvahiEntryGroup      *g,	/* I - Service */
+	       AvahiEntryGroupState state,	/* I - Registration state */
+	       void                 *context)	/* I - Printer */
+{
+  (void)context;
+
+  if (g == NULL || (g_options.dnssd_data->ipp_ref != NULL &&
+		    g_options.dnssd_data->ipp_ref != g))
+    return;
+  dnssd_callback(g, state);
+}
+
+/*
+ * 'dnssd_callback()' - Handle DNS-SD registration events uscan.
+ */
+
+static void
+dnssd_callback_uscan(AvahiEntryGroup      *g,	/* I - Service */
+	       AvahiEntryGroupState state,	/* I - Registration state */
+	       void                 *context)	/* I - Printer */
+{
+  (void)context;
+
+  if (g == NULL || (g_options.dnssd_data->uscan_ref != NULL &&
+		    g_options.dnssd_data->uscan_ref != g))
+    return;
+  dnssd_callback(g, state);
 }
 
 /*
@@ -93,6 +120,8 @@ dnssd_client_cb(AvahiClient      *c,		/* I - Client */
     NOTE("Dropping printer registration because of possible host name change.");
     if (g_options.dnssd_data->ipp_ref)
       avahi_entry_group_reset(g_options.dnssd_data->ipp_ref);
+    if (g_options.dnssd_data->uscan_ref)
+      avahi_entry_group_reset(g_options.dnssd_data->uscan_ref);
     break;
 
   case AVAHI_CLIENT_FAILURE:
@@ -132,6 +161,7 @@ int dnssd_init()
   g_options.dnssd_data->DNSSDMaster = NULL;
   g_options.dnssd_data->DNSSDClient = NULL;
   g_options.dnssd_data->ipp_ref = NULL;
+  g_options.dnssd_data->uscan_ref = NULL;
 
   if ((g_options.dnssd_data->DNSSDMaster = avahi_threaded_poll_new()) == NULL) {
     ERR("Error: Unable to initialize DNS-SD.");
@@ -181,6 +211,7 @@ void dnssd_shutdown()
 int dnssd_register(AvahiClient *c)
 {
   AvahiStringList *ipp_txt;             /* DNS-SD IPP TXT record */
+  AvahiStringList *uscan_txt;             /* DNS-SD USCAN TXT record */
   char            temp[256];            /* Subtype service string */
   char            dnssd_name[1024];
   char            *dev_id = NULL;
@@ -308,7 +339,7 @@ int dnssd_register(AvahiClient *c)
     snprintf(dnssd_name, sizeof(dnssd_name), "%s", model);
 
  /*
-  * Create the TXT record...
+  * Create the TXT record for printer ...
   */
 
   ipp_txt = NULL;
@@ -343,7 +374,7 @@ int dnssd_register(AvahiClient *c)
   if (g_options.dnssd_data->ipp_ref == NULL)
     g_options.dnssd_data->ipp_ref =
       avahi_entry_group_new((c ? c : g_options.dnssd_data->DNSSDClient),
-			    dnssd_callback, NULL);
+			    dnssd_callback_ipp, NULL);
 
   if (g_options.dnssd_data->ipp_ref == NULL) {
     ERR("Could not establish Avahi entry group");
@@ -429,12 +460,70 @@ int dnssd_register(AvahiClient *c)
   }
 
  /*
-  * Commit it...
+  * Commit it printer ...
   */
 
   avahi_entry_group_commit(g_options.dnssd_data->ipp_ref);
 
   avahi_string_list_free(ipp_txt);
+
+ /*
+  * Create the TXT record for scanner ...
+  */
+  uscan_txt = NULL;
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "duplex=U");
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "is=platen");
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "cs=U");
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "rs=eSCL");
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "representation=");
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "ty=%s %s", make, model);
+  if (strcasecmp(g_options.interface, "lo") == 0)
+       uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", temp);
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "pdl=%s", formats);
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "vers=2.0");
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "txtvers=1");
+
+
+ /*
+  * Register _uscan._tcp (LPD) with port 0 to reserve the service name...
+  */
+
+  NOTE("Registering scanner %s on interface %s for DNS-SD broadcasting ...",
+       dnssd_name, g_options.interface);
+
+  if (g_options.dnssd_data->uscan_ref == NULL)
+    g_options.dnssd_data->uscan_ref =
+      avahi_entry_group_new((c ? c : g_options.dnssd_data->DNSSDClient),
+			    dnssd_callback_uscan, NULL);
+
+  if (g_options.dnssd_data->uscan_ref == NULL) {
+    ERR("Could not establish Avahi entry group");
+    avahi_string_list_free(uscan_txt);
+    return -1;
+  }
+
+  error =
+    avahi_entry_group_add_service_strlst(g_options.dnssd_data->uscan_ref,
+					 (g_options.interface ?
+					  (int)if_nametoindex(g_options.interface) :
+					  AVAHI_IF_UNSPEC),
+					 AVAHI_PROTO_UNSPEC, 0,
+					 dnssd_name,
+					 "_uscan._tcp", NULL, NULL, 0,
+					 NULL);
+  if (error)
+    ERR("Error registering %s as Unix scanner (_uscan._tcp): %d", dnssd_name,
+	error);
+  else
+    NOTE("Registered %s as Unix scanner (_uscan._tcp).", dnssd_name);
+
+ /*
+  * Commit it scanner ...
+  */
+
+  avahi_entry_group_commit(g_options.dnssd_data->uscan_ref);
+
+  avahi_string_list_free(uscan_txt);
 
   return 0;
 }
@@ -444,5 +533,9 @@ void dnssd_unregister()
   if (g_options.dnssd_data->ipp_ref) {
     avahi_entry_group_free(g_options.dnssd_data->ipp_ref);
     g_options.dnssd_data->ipp_ref = NULL;
+  }
+  if (g_options.dnssd_data->uscan_ref) {
+    avahi_entry_group_free(g_options.dnssd_data->uscan_ref);
+    g_options.dnssd_data->uscan_ref = NULL;
   }
 }
