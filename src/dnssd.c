@@ -467,6 +467,8 @@ int dnssd_register(AvahiClient *c)
 
   avahi_string_list_free(ipp_txt);
 
+  if (g_options.scanner_present == 1)
+     goto noscanner;
  /*
   * Create the TXT record for scanner ...
   */
@@ -524,7 +526,7 @@ int dnssd_register(AvahiClient *c)
   avahi_entry_group_commit(g_options.dnssd_data->uscan_ref);
 
   avahi_string_list_free(uscan_txt);
-
+noscanner:
   return 0;
 }
 
