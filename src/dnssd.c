@@ -467,7 +467,7 @@ int dnssd_register(AvahiClient *c)
 
   avahi_string_list_free(ipp_txt);
 
-  if (g_options.scanner_present == 1)
+  if (g_options.scanner_present == 0)
      goto noscanner;
  /*
   * Create the TXT record for scanner ...
