@@ -49,7 +49,7 @@ static int is_ippusb_scanner(const struct libusb_interface_descriptor *interf)
         break;
       }
 
-      if (buf[1] == USB_DT_CS_INTERFACE) {
+      if (buf[1] == (LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_DT_INTERFACE)) {
         if (interf->bInterfaceClass == LIBUSB_CLASS_PRINTER) {
           unsigned int i;
           unsigned int n;
