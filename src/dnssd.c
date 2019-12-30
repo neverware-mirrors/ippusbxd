@@ -23,7 +23,7 @@
 #include "options.h"
 
 /*
- * 'dnssd_callback()' - Handle DNS-SD registration events generic.
+ * 'dnssd_callback()' - Handle generic DNS-SD registration events
  */
 
 static void
@@ -51,7 +51,7 @@ dnssd_callback(AvahiEntryGroup      *g,		/* I - Service */
 }
 
 /*
- * 'dnssd_callback()' - Handle DNS-SD registration events ipp.
+ * 'dnssd_callback()' - Handle IPP DNS-SD registration events
  */
 
 static void
@@ -68,7 +68,7 @@ dnssd_callback_ipp(AvahiEntryGroup      *g,	/* I - Service */
 }
 
 /*
- * 'dnssd_callback()' - Handle DNS-SD registration events uscan.
+ * 'dnssd_callback()' - Handle uscan DNS-SD registration events
  */
 
 static void
@@ -211,7 +211,7 @@ void dnssd_shutdown()
 int dnssd_register(AvahiClient *c)
 {
   AvahiStringList *ipp_txt;             /* DNS-SD IPP TXT record */
-  AvahiStringList *uscan_txt;             /* DNS-SD USCAN TXT record */
+  AvahiStringList *uscan_txt;           /* DNS-SD USCAN TXT record */
   char            temp[256];            /* Subtype service string */
   char            dnssd_name[1024];
   char            *dev_id = NULL;
@@ -339,7 +339,7 @@ int dnssd_register(AvahiClient *c)
     snprintf(dnssd_name, sizeof(dnssd_name), "%s", model);
 
  /*
-  * Create the TXT record for printer ...
+  * Create the TXT record for the printer part ...
   */
 
   ipp_txt = NULL;
@@ -362,7 +362,6 @@ int dnssd_register(AvahiClient *c)
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "priority=60");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "txtvers=1");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "qtotal=1");
-  free(dev_id);
 
  /*
   * Register _printer._tcp (LPD) with port 0 to reserve the service name...
@@ -460,7 +459,7 @@ int dnssd_register(AvahiClient *c)
   }
 
  /*
-  * Commit it printer ...
+  * Commit it for thr printer part ...
   */
 
   avahi_entry_group_commit(g_options.dnssd_data->ipp_ref);
@@ -470,7 +469,7 @@ int dnssd_register(AvahiClient *c)
   if (g_options.scanner_present == 0)
      goto noscanner;
  /*
-  * Create the TXT record for scanner ...
+  * Create the TXT record for the scanner part ...
   */
   uscan_txt = NULL;
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "duplex=U");
@@ -487,7 +486,7 @@ int dnssd_register(AvahiClient *c)
 
 
  /*
-  * Register _uscan._tcp (LPD) with port 0 to reserve the service name...
+  * Register _uscan._tcp (Scanner) ...
   */
 
   NOTE("Registering scanner %s on interface %s for DNS-SD broadcasting ...",
@@ -511,8 +510,9 @@ int dnssd_register(AvahiClient *c)
 					  AVAHI_IF_UNSPEC),
 					 AVAHI_PROTO_UNSPEC, 0,
 					 dnssd_name,
-					 "_uscan._tcp", NULL, NULL, 0,
-					 NULL);
+					 "_uscan._tcp", NULL, NULL,
+					 g_options.real_port,
+					 uscan_txt);
   if (error)
     ERR("Error registering %s as Unix scanner (_uscan._tcp): %d", dnssd_name,
 	error);
@@ -520,13 +520,14 @@ int dnssd_register(AvahiClient *c)
     NOTE("Registered %s as Unix scanner (_uscan._tcp).", dnssd_name);
 
  /*
-  * Commit it scanner ...
+  * Commit it for the scanner part ...
   */
 
   avahi_entry_group_commit(g_options.dnssd_data->uscan_ref);
 
   avahi_string_list_free(uscan_txt);
 noscanner:
+  free(dev_id);
   return 0;
 }
 
