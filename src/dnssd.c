@@ -481,7 +481,7 @@ int dnssd_register(AvahiClient *c)
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "ty=%s %s", make, model);
   if (strcasecmp(g_options.interface, "lo") == 0)
        uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", temp);
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "pdl=%s", formats);
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "pdl=image/jpeg");
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "vers=2.0");
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "txtvers=1");
 
