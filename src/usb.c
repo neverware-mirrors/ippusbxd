@@ -37,11 +37,10 @@ static int bus, dev_addr;
 
 static int is_ippusb_scanner(const struct libusb_interface_descriptor *interf)
 {
-  unsigned int i;
-  unsigned int n;
   const unsigned char *buf;
-  unsigned int size;
+  unsigned size;
 
+  /* avoid re-ordering or hiding descriptors for display */
   if (interf->extra_length) {
     size = interf->extra_length;
     buf = interf->extra;
@@ -52,6 +51,9 @@ static int is_ippusb_scanner(const struct libusb_interface_descriptor *interf)
 
       if (buf[1] == (LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_DT_INTERFACE)) {
         if (interf->bInterfaceClass == LIBUSB_CLASS_PRINTER) {
+          unsigned int i;
+          unsigned int n;
+
           n = 4;
           for (i = 0 ; i < buf[3] ; i++) {
             if (buf[n] == 0x00) {  /* Basic capabilities */
@@ -63,6 +65,8 @@ static int is_ippusb_scanner(const struct libusb_interface_descriptor *interf)
           }
         }
       }
+      size -= buf[0];
+      buf += buf[0];
     }
   }
   return 0;
