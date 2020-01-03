@@ -511,8 +511,8 @@ int dnssd_register(AvahiClient *c)
 					  AVAHI_IF_UNSPEC),
 					 AVAHI_PROTO_UNSPEC, 0,
 					 dnssd_name,
-					 "_uscan._tcp", NULL, NULL, 0,
-					 NULL);
+					 "_uscan._tcp", NULL, NULL,
+					 g_options.real_port, uscan_txt);
   if (error)
     ERR("Error registering %s as Unix scanner (_uscan._tcp): %d", dnssd_name,
 	error);
