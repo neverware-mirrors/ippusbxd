@@ -3,7 +3,7 @@ Maintainer: Debian Printing Team <debian-printing@lists.debian.org>
 Uploaders: Didier Raboud <odyx@debian.org>
 Section: comm
 Priority: optional
-Build-Depends: debhelper (>= 9),
+Build-Depends: debhelper (>= 12~),
                libusb-1.0-0-dev,
                libavahi-common-dev,
                libavahi-client-dev,
