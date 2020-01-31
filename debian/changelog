@@ -1,3 +1,14 @@
+ippusbxd (1.33-2) unstable; urgency=medium
+
+  * Use secure copyright file specification URI
+  * Bump debhelper from old 9 to 12
+  * Set debhelper-compat version in Build-Depends
+  * Set upstream metadata fields: Bug-Database, Bug-Submit
+  * Fix upstream url in d/watch
+  * Bump Standards-Version to 4.5.0 without changes needed
+
+ -- Didier Raboud <odyx@debian.org>  Fri, 31 Jan 2020 16:40:28 +0100
+
 ippusbxd (1.33-1) unstable; urgency=medium
 
   * New 1.33 upstream release
