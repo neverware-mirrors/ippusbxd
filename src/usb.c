@@ -35,43 +35,6 @@
 
 static int bus, dev_addr;
 
-static int is_ippusb_scanner(const struct libusb_interface_descriptor *interf)
-{
-  const unsigned char *buf;
-  unsigned size;
-
-  /* avoid re-ordering or hiding descriptors for display */
-  if (interf->extra_length) {
-    size = interf->extra_length;
-    buf = interf->extra;
-    while (size >= 2 * sizeof(uint8_t)) {
-      if (buf[0] < 2) {
-        break;
-      }
-
-      if (buf[1] == (LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_DT_INTERFACE)) {
-        if (interf->bInterfaceClass == LIBUSB_CLASS_PRINTER) {
-          unsigned int i;
-          unsigned int n;
-
-          n = 4;
-          for (i = 0 ; i < buf[3] ; i++) {
-            if (buf[n] == 0x00) {  /* Basic capabilities */
-              uint16_t caps = le16_to_cpu(*((uint16_t*)&buf[n+2]));
-              if (caps & 0x02)
-                return 1;
-            }
-            n += 2 + buf[n+1];
-          }
-        }
-      }
-      size -= buf[0];
-      buf += buf[0];
-    }
-  }
-  return 0;
-}
-
 static int is_ippusb_interface(const struct libusb_interface_descriptor *interf)
 {
   return interf->bInterfaceClass == 0x07 &&
@@ -82,7 +45,6 @@ static int is_ippusb_interface(const struct libusb_interface_descriptor *interf)
 static int count_ippoverusb_interfaces(struct libusb_config_descriptor *config)
 {
   int ippusb_interface_count = 0;
-  g_options.scanner_present = 0;
 
   NOTE("Counting IPP-over-USB interfaces ...");
   for (uint8_t interface_num = 0;
@@ -106,16 +68,12 @@ static int count_ippoverusb_interfaces(struct libusb_config_descriptor *config)
       if (!is_ippusb_interface(alt))
 	continue;
 
-      if (g_options.scanner_present == 0)
-          g_options.scanner_present = is_ippusb_scanner(alt);
-
       NOTE("   -> is IPP-over-USB");
       ippusb_interface_count++;
       break;
     }
   }
 
-  NOTE("   -> Scanner present %d", g_options.scanner_present);
   NOTE("   -> %d Interfaces", ippusb_interface_count);
   return ippusb_interface_count;
 }
