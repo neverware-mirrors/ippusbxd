@@ -51,9 +51,6 @@ struct options {
   pthread_t usb_event_thread_handle;
   struct tcp_sock_t *tcp_socket;
   struct tcp_sock_t *tcp6_socket;
-
-  /* Scanner presence */
-  int scanner_present;
 };
 
 extern struct options g_options;
