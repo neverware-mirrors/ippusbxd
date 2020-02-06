@@ -1,0 +1,3 @@
+version=3
+opts=filenamemangle=s/.+\/v?(\d\S*)\.tar\.gz/ippusbxd-$1\.tar\.gz/ \
+  https://github.com/daniel-dressler/ippusbxd/tags .*/v?(\d\S*)\.tar\.gz
