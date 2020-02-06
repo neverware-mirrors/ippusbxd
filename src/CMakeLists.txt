@@ -28,6 +28,17 @@ find_package(AVAHICLIENT REQUIRED)
 find_package(LIBUSB REQUIRED)
 include_directories(${LIBUSB_INCLUDE_DIR})
 
+# Libxml-2.0
+find_package(LibXml2 REQUIRED)
+set(LIBXML2_LIBRARIES ${LIBXML2_LIBRARY})
+include_directories(${LIBXML2_INCLUDE_DIR})
+unset(LIBXML2_LIBRARY)
+
+find_package(LibXml2 REQUIRED)
+
+
+# Libcurl
+find_package(CURL REQUIRED)
 
 add_executable(ippusbxd
 ippusbxd.c
@@ -42,4 +53,6 @@ target_link_libraries(ippusbxd ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(ippusbxd ${LIBUSB_LIBRARIES})
 target_link_libraries(ippusbxd ${AVAHICOMMON_LIBRARIES})
 target_link_libraries(ippusbxd ${AVAHICLIENT_LIBRARIES})
+target_link_libraries(ippusbxd ${LIBXML2_LIBRARIES})
+target_link_libraries(ippusbxd ${CURL_LIBRARIES})
 
