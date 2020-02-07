@@ -48,6 +48,7 @@ usb.c
 logging.c
 options.c
 dnssd.c
+capabilities.c
 )
 target_link_libraries(ippusbxd ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(ippusbxd ${LIBUSB_LIBRARIES})
