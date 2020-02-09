@@ -225,10 +225,15 @@ void * dnssd_escl_register(void *data)
    * Create the TXT record for scanner ...
    */
   uscan_txt = NULL;
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "representation=%s", scanner->representation);
+  if (scanner->representation)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "representation=%s", scanner->representation);
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "note=");
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "UUID=%s", scanner->uuid);
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", scanner->adminurl);
+  if (scanner->uuid)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "UUID=%s", scanner->uuid);
+  if (!scanner->adminurl)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", temp);
+  else
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", scanner->adminurl);
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "dupplex=%s", scanner->duplex);
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "cs=%s", scanner->cs);
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "pdl=%s", scanner->pdl);
