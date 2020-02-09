@@ -10,6 +10,7 @@
 #include <libxml/parser.h>
 #include <curl/curl.h>
 #include "capabilities.h"
+#include "logging.h"
 
 struct cap
 {
@@ -223,7 +224,7 @@ rennew:
     if (!scanner->duplex) scanner->duplex = strdup("F");
     
     NOTE("txt = [\n\"representation=%s\"\n\"note=\"\n\"UUID=%s\"\n\"adminurl=%s\"\n\"duplex=%s\"\n\"is=%s\"\n\"cs=%s\"\n\"pdl=%s\"\n\"ty=%s\"\n\"rs=eSCL\"\n\"vers=%s\"\n\"txtvers=1\"\n]",
-         ippscanner->representation, ippscanner->uuid, ippscanner->adminurl, ippscanner->duplex, ippscanner->is, ippscanner->cs, ippscanner->pdl, ippscanner->ty, ippscanner->vers);
+         scanner->representation, scanner->uuid, scanner->adminurl, scanner->duplex, scanner->is, scanner->cs, scanner->pdl, scanner->ty, scanner->vers);
     xmlFreeDoc(doc);
 
     return 1;
