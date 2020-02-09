@@ -222,7 +222,11 @@ rennew:
     // Parcours
     parcours_prefixe(racine, afficher_noeud, scanner);
     if (!scanner->duplex) scanner->duplex = strdup("F");
-    
+   
+    if (!scanner->adminurl) scanner->adminurl = strdup(name);
+    if (!scanner->uuid) scanner->uuid = strdup("T");
+    if (!scanner->representation) scanner->representation = strdup("T");
+
     NOTE("txt = [\n\"representation=%s\"\n\"note=\"\n\"UUID=%s\"\n\"adminurl=%s\"\n\"duplex=%s\"\n\"is=%s\"\n\"cs=%s\"\n\"pdl=%s\"\n\"ty=%s\"\n\"rs=eSCL\"\n\"vers=%s\"\n\"txtvers=1\"\n]",
          scanner->representation, scanner->uuid, scanner->adminurl, scanner->duplex, scanner->is, scanner->cs, scanner->pdl, scanner->ty, scanner->vers);
     xmlFreeDoc(doc);

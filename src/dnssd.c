@@ -314,7 +314,11 @@ int dnssd_register(AvahiClient *c)
   * Parse the device ID for MFG, MDL, and CMD
   */
 
+  
   dev_id = strdup(g_options.device_id);
+  NOTE("%s", "=======================================");
+  NOTE("%s", dev_id);
+  NOTE("%s", "=======================================");
   if ((ptr = strcasestr(dev_id, "MFG:")) == NULL)
     if ((ptr = strcasestr(dev_id, "MANUFACTURER:")) == NULL) {
       ERR("No manufacturer info in device ID");
