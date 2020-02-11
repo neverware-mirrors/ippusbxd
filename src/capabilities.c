@@ -18,6 +18,8 @@ struct cap
     size_t size;
 };
 
+#define SIZE_DATA 32784
+
 typedef void (*fct_parcours_t)(xmlNodePtr, ippScanner *ippscanner);
 
 void parcours_prefixe(xmlNodePtr noeud, fct_parcours_t f, ippScanner *ippscanner);
@@ -201,7 +203,7 @@ http_request(const char *hostname, const char *ressource, int port, int *size_da
 {
   http_t	*http = NULL;		/* HTTP connection */
   http_status_t	status = HTTP_STATUS_OK;			/* Status of GET command */
-  char		buffer[8192];		/* Input buffer */
+  char		buffer[SIZE_DATA] = { 0 };		/* Input buffer */
   long		bytes;			/* Number of bytes read */
   off_t		total;		        /* Total bytes */
   const char	*encoding;		/* Negotiated Content-Encoding */
@@ -236,13 +238,14 @@ http_request(const char *hostname, const char *ressource, int port, int *size_da
 
   total  = 0;
 
-  while ((bytes = httpRead2(http, buffer, sizeof(buffer))) > 0)
+  while ((bytes = httpRead2(http, buffer, (SIZE_DATA - 1))) > 0)
   {
     char *str = realloc(memory, total + bytes + 1);
     memory = str;
     memcpy(&(memory[total]), buffer, bytes);
     total += bytes;
     memory[total] = 0;
+    memset(buffer, 0, SIZE_DATA);
   }
   tmp = (char *)strstr(memory, "<?xml version");
   if (tmp)
