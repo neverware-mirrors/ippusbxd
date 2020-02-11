@@ -271,7 +271,7 @@ void * dnssd_escl_register(void *data)
      uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", printer->adminurl);
   else
      uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", temp);
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "dupplex=%s", scanner->duplex);
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "duplex=%s", scanner->duplex);
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "cs=%s", scanner->cs);
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "pdl=%s", scanner->pdl);
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "ty=%s", scanner->ty);
