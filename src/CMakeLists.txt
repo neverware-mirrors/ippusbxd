@@ -37,8 +37,8 @@ unset(LIBXML2_LIBRARY)
 find_package(LibXml2 REQUIRED)
 
 
-# Libcurl
-find_package(CURL REQUIRED)
+# Libcups
+find_package(Cups REQUIRED)
 
 add_executable(ippusbxd
 ippusbxd.c
@@ -48,11 +48,12 @@ usb.c
 logging.c
 options.c
 dnssd.c
+capabilities.c
 )
 target_link_libraries(ippusbxd ${CMAKE_THREAD_LIBS_INIT})
 target_link_libraries(ippusbxd ${LIBUSB_LIBRARIES})
 target_link_libraries(ippusbxd ${AVAHICOMMON_LIBRARIES})
 target_link_libraries(ippusbxd ${AVAHICLIENT_LIBRARIES})
 target_link_libraries(ippusbxd ${LIBXML2_LIBRARIES})
-target_link_libraries(ippusbxd ${CURL_LIBRARIES})
+target_link_libraries(ippusbxd ${CUPS_LIBRARIES})
 

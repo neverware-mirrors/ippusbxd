@@ -16,12 +16,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <net/if.h>
 
 #include "dnssd.h"
 #include "logging.h"
 #include "options.h"
 #include "capabilities.h"
+
+
 
 /*
  * 'dnssd_callback()' - Handle DNS-SD registration events generic.
@@ -209,10 +212,126 @@ void dnssd_shutdown()
   NOTE("DNS-SD shut down.");
 }
 
+void * dnssd_escl_register(void *data)
+{
+  AvahiStringList *uscan_txt;             /* DNS-SD USCAN TXT record */
+  AvahiStringList *ipp_txt;             /* DNS-SD USCAN TXT record */
+  ippScanner      *scanner = NULL;
+  int             error;
+  char            temp[256];            /* Subtype service string */
+ 
+  ipp_txt = (AvahiStringList *)data;
+
+  ippPrinter *printer = (ippPrinter *)calloc(1, sizeof(ippPrinter));
+  ipp_request(printer, g_options.real_port);
+  if (printer->adminurl)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "adminurl=%s", printer->adminurl);
+  else
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "adminurl=%s", temp);
+  if (printer->uuid)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "UUID=%s", printer->uuid);
+  NOTE("Printer TXT[\n\tadminurl=%s\n\tUUID=%s\t\n]\n", printer->adminurl, printer->uuid);
+
+ /*
+  * Then register the _ipp._tcp (IPP)...
+  */
+  error = avahi_entry_group_update_service_txt_strlst(
+      g_options.dnssd_data->ipp_ref,
+      (g_options.interface ? (int)if_nametoindex(g_options.interface)
+                           : AVAHI_IF_UNSPEC),
+      AVAHI_PROTO_UNSPEC, 0, g_options.dnssd_data->dnssd_name, "_ipp._tcp", NULL, ipp_txt);
+
+  if (error) {
+    ERR("Error registering %s as IPP printer (_ipp._tcp): %d", g_options.dnssd_data->dnssd_name,
+	error);
+  }
+  avahi_entry_group_commit(g_options.dnssd_data->ipp_ref);
+  avahi_string_list_free(ipp_txt);
+
+  snprintf(temp, sizeof(temp), "http://127.0.0.1:%d/", g_options.real_port);
+  scanner = (ippScanner*) calloc(1, sizeof(ippScanner));
+  if (is_scanner_present(scanner, g_options.real_port) == 0 || scanner == NULL)
+     goto noscanner;
+  /*
+   * Create the TXT record for scanner ...
+   */
+  uscan_txt = NULL;
+  if (scanner->representation)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "representation=%s", scanner->representation);
+  else if (printer->representation)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "representation=%s", printer->representation);
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "note=");
+  if (scanner->uuid)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "UUID=%s", scanner->uuid);
+  else if (printer->uuid)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "UUID=%s", printer->uuid);
+  if (scanner->adminurl)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", scanner->adminurl);
+  else if (printer->adminurl)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", printer->adminurl);
+  else
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", temp);
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "dupplex=%s", scanner->duplex);
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "cs=%s", scanner->cs);
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "pdl=%s", scanner->pdl);
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "ty=%s", scanner->ty);
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "rs=eSCL");
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "vers=%s", scanner->vers);
+  uscan_txt = avahi_string_list_add_printf(uscan_txt, "txtvers=1");
+
+
+ /*
+  * Register _uscan._tcp (LPD) with port 0 to reserve the service name...
+  */
+
+  NOTE("Registering scanner %s on interface %s for DNS-SD broadcasting ...",
+       scanner->ty, g_options.interface);
+
+  if (g_options.dnssd_data->uscan_ref == NULL)
+    g_options.dnssd_data->uscan_ref =
+      avahi_entry_group_new(g_options.dnssd_data->DNSSDClient,
+			    dnssd_callback_uscan, NULL);
+
+  if (g_options.dnssd_data->uscan_ref == NULL) {
+    ERR("Could not establish Avahi entry group");
+    avahi_string_list_free(uscan_txt);
+    scanner = free_scanner(scanner);
+    goto noscanner;
+  }
+
+  error =
+    avahi_entry_group_add_service_strlst(g_options.dnssd_data->uscan_ref,
+					 (g_options.interface ?
+					  (int)if_nametoindex(g_options.interface) :
+					  AVAHI_IF_UNSPEC),
+					 AVAHI_PROTO_UNSPEC, 0,
+					 scanner->ty,
+					 "_uscan._tcp", NULL, NULL,
+					 g_options.real_port, uscan_txt);
+  if (error) {
+    ERR("Error registering %s as Unix scanner (_uscan._tcp): %d", scanner->ty,
+	error);
+    scanner = free_scanner(scanner);
+    goto noscanner;
+  }else
+    NOTE("Registered %s as Unix scanner (_uscan._tcp).", scanner->ty);
+
+ /*
+  * Commit it scanner ...
+  */
+
+  avahi_entry_group_commit(g_options.dnssd_data->uscan_ref);
+
+  avahi_string_list_free(uscan_txt);
+  scanner = free_scanner(scanner);
+noscanner:
+  printer = free_printer(printer);
+  return 0;
+}
+
 int dnssd_register(AvahiClient *c)
 {
   AvahiStringList *ipp_txt;             /* DNS-SD IPP TXT record */
-  AvahiStringList *uscan_txt;             /* DNS-SD USCAN TXT record */
   char            temp[256];            /* Subtype service string */
   char            dnssd_name[1024];
   char            *dev_id = NULL;
@@ -221,24 +340,28 @@ int dnssd_register(AvahiClient *c)
   const char      *serial = NULL;
   const char      *cmd;
   const char      *urf = NULL;
+  char            has_duplex = 'U',
+                  has_color = 'U',
+                  has_copies = 'U';
   int             pwgraster = 0,
                   appleraster = 0,
                   pclm = 0,
                   pdf = 0,
                   jpeg = 0;
-  char            has_duplex = 'U',
-                  has_color = 'U',
-                  has_copies = 'U';
   char            formats[1024];        /* I - Supported formats */
   char            *ptr;
   int             error;
-  ippScanner      *scanner = NULL;
+  pthread_t       thread_escl;
 
  /*
   * Parse the device ID for MFG, MDL, and CMD
   */
 
+  
   dev_id = strdup(g_options.device_id);
+  NOTE("%s", "=======================================");
+  NOTE("%s", dev_id);
+  NOTE("%s", "=======================================");
   if ((ptr = strcasestr(dev_id, "MFG:")) == NULL)
     if ((ptr = strcasestr(dev_id, "MANUFACTURER:")) == NULL) {
       ERR("No manufacturer info in device ID");
@@ -339,16 +462,16 @@ int dnssd_register(AvahiClient *c)
     snprintf(dnssd_name, sizeof(dnssd_name), "%s [%s]", model, serial);
   else
     snprintf(dnssd_name, sizeof(dnssd_name), "%s", model);
-
+  g_options.dnssd_data->dnssd_name = strdup(dnssd_name);
  /*
   * Create the TXT record for printer ...
   */
 
+//  UUID=cfe92100-67c4-11d4-a45f-f8d0273ebac3" "note=" "adminurl=http://EPSON3EBAC3.local.:80/PRESENTATION/BONJOUR"
+
   ipp_txt = NULL;
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "rp=ipp/print");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "ty=%s %s", make, model);
-  if (strcasecmp(g_options.interface, "lo") == 0)
-    ipp_txt = avahi_string_list_add_printf(ipp_txt, "adminurl=%s", temp);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "product=(%s)", model);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "pdl=%s", formats);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "Color=%c", has_color);
@@ -372,7 +495,8 @@ int dnssd_register(AvahiClient *c)
 
   NOTE("Registering printer %s on interface %s for DNS-SD broadcasting ...",
        dnssd_name, g_options.interface);
-
+  if (c)
+     g_options.dnssd_data->DNSSDClient = c;
   if (g_options.dnssd_data->ipp_ref == NULL)
     g_options.dnssd_data->ipp_ref =
       avahi_entry_group_new((c ? c : g_options.dnssd_data->DNSSDClient),
@@ -465,75 +589,11 @@ int dnssd_register(AvahiClient *c)
   * Commit it printer ...
   */
 
-  avahi_entry_group_commit(g_options.dnssd_data->ipp_ref);
-
-  avahi_string_list_free(ipp_txt);
+  // avahi_entry_group_commit(g_options.dnssd_data->ipp_ref);
 
 
-  scanner = (ippScanner*) calloc(1, sizeof(ippScanner));
-  if (is_scanner_present(scanner, temp) == 0 || scanner == NULL)
-     goto noscanner;
-  /*
-   * Create the TXT record for scanner ...
-   */
-  uscan_txt = NULL;
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "representation=%s", scanner->representation);
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "note=");
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "UUID=%s", scanner->uuid);
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", scanner->adminurl);
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "dupplex=%s", scanner->duplex);
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "cs=%s", scanner->cs);
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "pdl=%s", scanner->pdl);
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "ty=%s", scanner->ty);
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "rs=eSCL");
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "vers=%s", scanner->vers);
-  uscan_txt = avahi_string_list_add_printf(uscan_txt, "txtvers=1");
+  pthread_create (&thread_escl, NULL, dnssd_escl_register, ipp_txt);
 
-
- /*
-  * Register _uscan._tcp (LPD) with port 0 to reserve the service name...
-  */
-
-  NOTE("Registering scanner %s on interface %s for DNS-SD broadcasting ...",
-       dnssd_name, g_options.interface);
-
-  if (g_options.dnssd_data->uscan_ref == NULL)
-    g_options.dnssd_data->uscan_ref =
-      avahi_entry_group_new((c ? c : g_options.dnssd_data->DNSSDClient),
-			    dnssd_callback_uscan, NULL);
-
-  if (g_options.dnssd_data->uscan_ref == NULL) {
-    ERR("Could not establish Avahi entry group");
-    avahi_string_list_free(uscan_txt);
-    scanner = free_scanner(scanner);
-    return -1;
-  }
-
-  error =
-    avahi_entry_group_add_service_strlst(g_options.dnssd_data->uscan_ref,
-					 (g_options.interface ?
-					  (int)if_nametoindex(g_options.interface) :
-					  AVAHI_IF_UNSPEC),
-					 AVAHI_PROTO_UNSPEC, 0,
-					 dnssd_name,
-					 "_uscan._tcp", NULL, NULL,
-					 g_options.real_port,
-					 uscan_txt);
-  if (error)
-    ERR("Error registering %s as Unix scanner (_uscan._tcp): %d", dnssd_name,
-	error);
-  else
-    NOTE("Registered %s as Unix scanner (_uscan._tcp).", dnssd_name);
-
- /*
-  * Commit it scanner ...
-  */
-
-  avahi_entry_group_commit(g_options.dnssd_data->uscan_ref);
-
-  avahi_string_list_free(uscan_txt);
-  scanner = free_scanner(scanner);
-noscanner:
   return 0;
 }
 
