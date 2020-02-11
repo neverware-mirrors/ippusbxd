@@ -24,6 +24,8 @@
 #include "options.h"
 #include "capabilities.h"
 
+
+
 /*
  * 'dnssd_callback()' - Handle DNS-SD registration events generic.
  */
@@ -213,13 +215,42 @@ void dnssd_shutdown()
 void * dnssd_escl_register(void *data)
 {
   AvahiStringList *uscan_txt;             /* DNS-SD USCAN TXT record */
+  AvahiStringList *ipp_txt;             /* DNS-SD USCAN TXT record */
   ippScanner      *scanner = NULL;
   int             error;
   char            temp[256];            /* Subtype service string */
-  sleep(2);
+ 
+  ipp_txt = (AvahiStringList *)data;
+
+  ippPrinter *printer = (ippPrinter *)calloc(1, sizeof(ippPrinter));
+  ipp_request(printer, g_options.real_port);
+  if (printer->adminurl)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "adminurl=%s", printer->adminurl);
+  else
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "adminurl=%s", temp);
+  if (printer->uuid)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "UUID=%s", printer->uuid);
+  NOTE("Printer TXT[\n\tadminurl=%s\n\tUUID=%s\t\n]\n", printer->adminurl, printer->uuid);
+
+ /*
+  * Then register the _ipp._tcp (IPP)...
+  */
+  error = avahi_entry_group_update_service_txt_strlst(
+      g_options.dnssd_data->ipp_ref,
+      (g_options.interface ? (int)if_nametoindex(g_options.interface)
+                           : AVAHI_IF_UNSPEC),
+      AVAHI_PROTO_UNSPEC, 0, g_options.dnssd_data->dnssd_name, "_ipp._tcp", NULL, ipp_txt);
+
+  if (error) {
+    ERR("Error registering %s as IPP printer (_ipp._tcp): %d", g_options.dnssd_data->dnssd_name,
+	error);
+  }
+  avahi_entry_group_commit(g_options.dnssd_data->ipp_ref);
+  avahi_string_list_free(ipp_txt);
+
   snprintf(temp, sizeof(temp), "http://127.0.0.1:%d/", g_options.real_port);
   scanner = (ippScanner*) calloc(1, sizeof(ippScanner));
-  if (is_scanner_present(scanner, temp) == 0 || scanner == NULL)
+  if (is_scanner_present(scanner, g_options.real_port) == 0 || scanner == NULL)
      goto noscanner;
   /*
    * Create the TXT record for scanner ...
@@ -227,13 +258,19 @@ void * dnssd_escl_register(void *data)
   uscan_txt = NULL;
   if (scanner->representation)
      uscan_txt = avahi_string_list_add_printf(uscan_txt, "representation=%s", scanner->representation);
+  else if (printer->representation)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "representation=%s", printer->representation);
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "note=");
   if (scanner->uuid)
      uscan_txt = avahi_string_list_add_printf(uscan_txt, "UUID=%s", scanner->uuid);
-  if (!scanner->adminurl)
-     uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", temp);
-  else
+  else if (printer->uuid)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "UUID=%s", printer->uuid);
+  if (scanner->adminurl)
      uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", scanner->adminurl);
+  else if (printer->adminurl)
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", printer->adminurl);
+  else
+     uscan_txt = avahi_string_list_add_printf(uscan_txt, "adminurl=%s", temp);
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "dupplex=%s", scanner->duplex);
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "cs=%s", scanner->cs);
   uscan_txt = avahi_string_list_add_printf(uscan_txt, "pdl=%s", scanner->pdl);
@@ -288,6 +325,7 @@ void * dnssd_escl_register(void *data)
   avahi_string_list_free(uscan_txt);
   scanner = free_scanner(scanner);
 noscanner:
+  printer = free_printer(printer);
   return 0;
 }
 
@@ -302,14 +340,14 @@ int dnssd_register(AvahiClient *c)
   const char      *serial = NULL;
   const char      *cmd;
   const char      *urf = NULL;
+  char            has_duplex = 'U',
+                  has_color = 'U',
+                  has_copies = 'U';
   int             pwgraster = 0,
                   appleraster = 0,
                   pclm = 0,
                   pdf = 0,
                   jpeg = 0;
-  char            has_duplex = 'U',
-                  has_color = 'U',
-                  has_copies = 'U';
   char            formats[1024];        /* I - Supported formats */
   char            *ptr;
   int             error;
@@ -424,16 +462,16 @@ int dnssd_register(AvahiClient *c)
     snprintf(dnssd_name, sizeof(dnssd_name), "%s [%s]", model, serial);
   else
     snprintf(dnssd_name, sizeof(dnssd_name), "%s", model);
-
+  g_options.dnssd_data->dnssd_name = strdup(dnssd_name);
  /*
   * Create the TXT record for printer ...
   */
 
+//  UUID=cfe92100-67c4-11d4-a45f-f8d0273ebac3" "note=" "adminurl=http://EPSON3EBAC3.local.:80/PRESENTATION/BONJOUR"
+
   ipp_txt = NULL;
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "rp=ipp/print");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "ty=%s %s", make, model);
-  if (strcasecmp(g_options.interface, "lo") == 0)
-    ipp_txt = avahi_string_list_add_printf(ipp_txt, "adminurl=%s", temp);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "product=(%s)", model);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "pdl=%s", formats);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "Color=%c", has_color);
@@ -551,11 +589,10 @@ int dnssd_register(AvahiClient *c)
   * Commit it printer ...
   */
 
-  avahi_entry_group_commit(g_options.dnssd_data->ipp_ref);
+  // avahi_entry_group_commit(g_options.dnssd_data->ipp_ref);
 
-  avahi_string_list_free(ipp_txt);
 
-  pthread_create (&thread_escl, NULL, dnssd_escl_register, NULL);
+  pthread_create (&thread_escl, NULL, dnssd_escl_register, ipp_txt);
 
   return 0;
 }
