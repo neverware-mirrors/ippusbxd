@@ -43,7 +43,7 @@ Under Fedora:
 ```
 sudo yum install libusbx-devel.* cmake
 ```
-Install also the *-devel packages of  libxml2-devel, cups-devel, libavahi-common and libavahi-client
+Install also the *-devel packages of  libxml2, cups, libavahi-common and libavahi-client
 
 Once the dependencies are installed simply run:
 ```
