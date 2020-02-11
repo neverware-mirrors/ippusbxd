@@ -8,7 +8,7 @@
 #include <wchar.h>
 #include <libxml/tree.h>
 #include <libxml/parser.h>
-#include <curl/curl.h>
+#include <cups/cups.h>
 #include "capabilities.h"
 #include "logging.h"
 
@@ -140,74 +140,144 @@ void afficher_noeud(xmlNodePtr noeud, ippScanner *ippscanner) {
     }
 }
 
-/**
- * \fn static size_t memory_callback_c(void *contents, size_t size, size_t nmemb, void *userp)
- * \brief Callback function that stocks in memory the content of the scanner capabilities.
- *
- * \return realsize (size of the content needed -> the scanner capabilities)
- */
-static size_t
-memory_callback_c(void *contents, size_t size, size_t nmemb, void *userp)
-{
-    size_t realsize = size * nmemb;
-    struct cap *mem = (struct cap *)userp;
-
-    char *str = realloc(mem->memory, mem->size + realsize + 1);
-    if (str == NULL) {
-        NOTE("not enough memory (realloc returned NULL)\n");
-        return (0);
-    }
-    mem->memory = str;
-    memcpy(&(mem->memory[mem->size]), contents, realsize);
-    mem->size = mem->size + realsize;
-    mem->memory[mem->size] = 0;
-    return (realsize);
-}
- 
 int
-is_scanner_present(ippScanner *scanner, const char *name) {
+ipp_request(ippPrinter *printer, int port)
+{
+  http_t	*http = NULL; 
+  ipp_t *request, *response = NULL;
+  ipp_attribute_t *attr;
+  char uri[1024];
+  char buffer[1024];
+
+  /* Try to connect to IPP server */
+  if ((http = httpConnect2("127.0.0.1", port, NULL, AF_UNSPEC,
+			   HTTP_ENCRYPTION_IF_REQUESTED, 1, 30000, NULL)) == NULL) {
+    printf("Unable to connect to 127.0.0.1 on port %d.\n", port);
+    return 1;
+  }
+
+  snprintf(uri, sizeof(uri), "http://127.0.0.1:%d/ipp/print", port);
+
+  /* Fire a Get-Printer-Attributes request */
+  request = ippNewRequest(IPP_OP_GET_PRINTER_ATTRIBUTES);
+  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri",
+	             NULL, uri);
+  response = cupsDoRequest(http, request, "/ipp/print");
+
+  /* Print the attributes received from the IPP printer */
+  attr = ippFirstAttribute(response);
+  while (attr) {
+    /* Ponvert IPP attribute's value to string */
+    ippAttributeString(attr, buffer, sizeof(buffer));
+    char *attr_name = (char*)ippGetName(attr);
+    if (!attr_name) continue;
+    if (!strcasecmp(attr_name, "printer-icons"))
+       printer->representation = strdup(buffer);
+    else if(!strcasecmp(attr_name, "printer-uuid"))
+       printer->uuid = strdup(buffer + 9);
+    else if(!strcasecmp(attr_name, "printer-more-info"))
+       printer->adminurl = strdup(buffer);
+		   
+    /* next attribute */
+    attr = ippNextAttribute(response);
+  }
+  httpClose(http);
+  return 0;
+}
+
+ippPrinter *
+free_printer(ippPrinter *printer)
+{
+   if (!printer) return NULL;
+   free(printer->representation);
+   free(printer->uuid);
+   free(printer->adminurl);
+   free(printer);
+   return NULL;
+}
+
+static char *
+http_request(const char *hostname, const char *ressource, int port, int *size_data)
+{
+  http_t	*http = NULL;		/* HTTP connection */
+  http_status_t	status = HTTP_STATUS_OK;			/* Status of GET command */
+  char		buffer[8192];		/* Input buffer */
+  long		bytes;			/* Number of bytes read */
+  off_t		total;		        /* Total bytes */
+  const char	*encoding;		/* Negotiated Content-Encoding */
+  char *memory = (char*)calloc(1, sizeof (char));
+  char *tmp = NULL;
+
+  http = httpConnect2(hostname, port, NULL, AF_UNSPEC, HTTP_ENCRYPTION_IF_REQUESTED, 1, 30000, NULL);
+  if (http == NULL)
+  {
+      perror(hostname);
+      return NULL;
+  }
+  encoding = httpGetContentEncoding(http);
+
+  httpClearFields(http);
+  httpSetField(http, HTTP_FIELD_ACCEPT_LANGUAGE, "en");
+  httpSetField(http, HTTP_FIELD_ACCEPT_ENCODING, encoding);
+
+  if (httpGet(http, ressource))
+  {
+      if (httpReconnect2(http, 30000, NULL))
+      {
+         status = HTTP_STATUS_ERROR;
+         return NULL;
+      }
+      while ((status = httpUpdate(http)) == HTTP_STATUS_CONTINUE);
+  }
+  if (status != HTTP_STATUS_OK) {
+     printf("GET failed with status %d...\n", status);
+     return NULL;
+  }
+
+  total  = 0;
+
+  while ((bytes = httpRead2(http, buffer, sizeof(buffer))) > 0)
+  {
+    char *str = realloc(memory, total + bytes + 1);
+    memory = str;
+    memcpy(&(memory[total]), buffer, bytes);
+    total += bytes;
+    memory[total] = 0;
+  }
+  tmp = (char *)strstr(memory, "<?xml version");
+  if (tmp)
+  {
+     char *tmp2 = NULL;
+     total = strlen(tmp);
+     tmp2 = strrchr(tmp, '>');
+     if (tmp2)
+     {
+       int len = total - strlen(tmp2);
+       tmp[len + 1] = 0;
+       tmp2 = strdup(tmp);
+       free(memory);
+       memory = tmp2;
+       total = strlen(memory);
+     }
+  }
+  *size_data = total;
+  httpClose(http);
+  printf("MEMORY<<<<<[%s]>>>><\n", memory);
+  return memory;
+}
+
+int
+is_scanner_present(ippScanner *scanner, int port) {
     xmlDocPtr doc;
     xmlNodePtr racine;
-    CURL *curl_handle = NULL;
-    int pass = 0;
-    struct cap *var = NULL;
-    char tmp[1024] = { 0 };
-    CURLcode res;
+    int size = 0;
+    NOTE("is_scanner_present");
+    if (!scanner) return 0;
+    NOTE("go is_scanner_present");
 
-    if (!scanner || name[0] == 0) return 0;
-    const char *scanner_capabilities = "eSCL/ScannerCapabilities";
-
-    var = (struct cap *)calloc(1, sizeof(struct cap));
-    if (var == NULL)
-      return 0;
-    var->memory = malloc(1);
-    var->size = 0;
-    strcpy(tmp, name);
-    strcat(tmp, scanner_capabilities);
-rennew:
-    curl_handle = curl_easy_init();
-    NOTE("Path : %s\n", tmp);
-    curl_easy_setopt(curl_handle, CURLOPT_URL, tmp);
-    if (strncmp(name, "https", 5) == 0) {
-        curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
-        curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYHOST, 0L);
-    }
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, memory_callback_c);
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)var);
-    if ((res = curl_easy_perform(curl_handle)) != CURLE_OK) {
-	NOTE("Error: %s\n", curl_easy_strerror(res));
-	if (pass < 10)
-	{
-	    pass++;
-	    curl_easy_cleanup(curl_handle);
-	    sleep(3);
-	    goto rennew;
-	}
-        return 0;
-    }
-    curl_easy_cleanup(curl_handle);
+    char *memory = http_request("127.0.0.1", "/eSCL/ScannerCapabilities", port, &size);
     // Ouverture du fichier XML
-    doc = xmlReadMemory(var->memory, var->size, "ScannerCapabilities.xml", NULL, 0); //xmlParseFile("ScannerCapabilities.xml");
+    doc = xmlReadMemory(memory, size, "ScannerCapabilities.xml", NULL, 0); //xmlParseFile("ScannerCapabilities.xml");
     if (doc == NULL) {
         NOTE("Document XML invalide\n");
         return 0; 
@@ -222,7 +292,6 @@ rennew:
     // Parcours
     parcours_prefixe(racine, afficher_noeud, scanner);
     if (!scanner->duplex) scanner->duplex = strdup("F");
-    
     NOTE("txt = [\n\"representation=%s\"\n\"note=\"\n\"UUID=%s\"\n\"adminurl=%s\"\n\"duplex=%s\"\n\"is=%s\"\n\"cs=%s\"\n\"pdl=%s\"\n\"ty=%s\"\n\"rs=eSCL\"\n\"vers=%s\"\n\"txtvers=1\"\n]",
          scanner->representation, scanner->uuid, scanner->adminurl, scanner->duplex, scanner->is, scanner->cs, scanner->pdl, scanner->ty, scanner->vers);
     xmlFreeDoc(doc);
