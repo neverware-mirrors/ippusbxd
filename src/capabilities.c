@@ -209,35 +209,119 @@ http_request(const char *hostname, const char *ressource, int port, int *size_da
   const char	*encoding;		/* Negotiated Content-Encoding */
   char *memory = (char*)calloc(1, sizeof (char));
   char *tmp = NULL;
+//////////////////////////////////////////////////////////////////////////////////////////////////////:
 
-  http = httpConnect2(hostname, port, NULL, AF_UNSPEC, HTTP_ENCRYPTION_IF_REQUESTED, 1, 30000, NULL);
-  if (http == NULL)
-  {
+
+    http = httpConnect2(hostname, port, NULL, AF_UNSPEC, HTTP_ENCRYPTION_IF_REQUESTED, 1, 30000, NULL);
+    if (http == NULL)
+    {
       perror(hostname);
-      return NULL;
-  }
-  encoding = httpGetContentEncoding(http);
+      return 0;
+    }
 
-  httpClearFields(http);
-  httpSetField(http, HTTP_FIELD_ACCEPT_LANGUAGE, "en");
-  httpSetField(http, HTTP_FIELD_ACCEPT_ENCODING, encoding);
+    NOTE("Checking file \"%s\"...\n", ressource);
 
-  if (httpGet(http, ressource))
-  {
-      if (httpReconnect2(http, 30000, NULL))
+    do
+    {
+      if (!strcasecmp(httpGetField(http, HTTP_FIELD_CONNECTION), "close"))
       {
-         status = HTTP_STATUS_ERROR;
-         return NULL;
+	httpClearFields(http);
+	if (httpReconnect2(http, 30000, NULL))
+	{
+          status = HTTP_STATUS_ERROR;
+          break;
+	}
       }
+
+      httpClearFields(http);
+      httpSetField(http, HTTP_FIELD_AUTHORIZATION, httpGetAuthString(http));
+      httpSetField(http, HTTP_FIELD_ACCEPT_LANGUAGE, "en");
+      if (httpHead(http, ressource))
+      {
+        if (httpReconnect2(http, 30000, NULL))
+        {
+          status = HTTP_STATUS_ERROR;
+          break;
+        }
+      }
+
       while ((status = httpUpdate(http)) == HTTP_STATUS_CONTINUE);
-  }
-  if (status != HTTP_STATUS_OK) {
-     printf("GET failed with status %d...\n", status);
-     return NULL;
-  }
 
-  total  = 0;
+      if (status == HTTP_STATUS_UNAUTHORIZED)
+      {
+       /*
+	* Flush any error message...
+	*/
 
+	httpFlush(http);
+
+       /*
+	* See if we can do authentication...
+	*/
+
+	if (cupsDoAuthentication(http, "GET", ressource))
+	{
+	  status = HTTP_STATUS_CUPS_AUTHORIZATION_CANCELED;
+	  break;
+	}
+
+	if (httpReconnect2(http, 30000, NULL))
+	{
+	  status = HTTP_STATUS_ERROR;
+	  break;
+	}
+
+        return 0;
+      }
+    }
+    while (status == HTTP_STATUS_UNAUTHORIZED ||
+           status == HTTP_STATUS_UPGRADE_REQUIRED);
+
+    if (status != HTTP_STATUS_OK)
+      NOTE("HEAD failed with status %d...\n", status);
+
+    encoding = httpGetContentEncoding(http);
+
+    NOTE("Requesting file \"%s\" (Accept-Encoding: %s)...\n", ressource,
+           encoding ? encoding : "identity");
+
+    do
+    {
+      if (!strcasecmp(httpGetField(http, HTTP_FIELD_CONNECTION), "close"))
+      {
+	httpClearFields(http);
+	if (httpReconnect2(http, 30000, NULL))
+	{
+          status = HTTP_STATUS_ERROR;
+          break;
+	}
+      }
+
+      httpClearFields(http);
+      httpSetField(http, HTTP_FIELD_AUTHORIZATION, httpGetAuthString(http));
+      httpSetField(http, HTTP_FIELD_ACCEPT_LANGUAGE, "en");
+      httpSetField(http, HTTP_FIELD_ACCEPT_ENCODING, encoding);
+
+      if (httpGet(http, ressource))
+      {
+        if (httpReconnect2(http, 30000, NULL))
+        {
+          status = HTTP_STATUS_ERROR;
+          break;
+        }
+      }
+
+      while ((status = httpUpdate(http)) == HTTP_STATUS_CONTINUE);
+
+    }
+    while (status == HTTP_STATUS_UNAUTHORIZED || status == HTTP_STATUS_UPGRADE_REQUIRED);
+
+    if (status != HTTP_STATUS_OK) {
+      NOTE("GET failed with status %d...\n", status);
+      return NULL;
+    }
+
+  total = 0;
   while ((bytes = httpRead2(http, buffer, (SIZE_DATA - 1))) > 0)
   {
     char *str = realloc(memory, total + bytes + 1);
@@ -265,7 +349,6 @@ http_request(const char *hostname, const char *ressource, int port, int *size_da
   }
   *size_data = total;
   httpClose(http);
-  printf("MEMORY<<<<<[%s]>>>><\n", memory);
   return memory;
 }
 
@@ -279,6 +362,7 @@ is_scanner_present(ippScanner *scanner, int port) {
     NOTE("go is_scanner_present");
 
     char *memory = http_request("127.0.0.1", "/eSCL/ScannerCapabilities", port, &size);
+    NOTE("Capabilites[\n%s\n]\n", memory);
     // Ouverture du fichier XML
     doc = xmlReadMemory(memory, size, "ScannerCapabilities.xml", NULL, 0); //xmlParseFile("ScannerCapabilities.xml");
     if (doc == NULL) {
