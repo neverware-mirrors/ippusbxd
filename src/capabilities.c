@@ -179,7 +179,22 @@ ipp_request(ippPrinter *printer, int port)
        printer->uuid = strdup(buffer + 9);
     else if(!strcasecmp(attr_name, "printer-more-info"))
        printer->adminurl = strdup(buffer);
-		   
+    else if(!strcasecmp(attr_name, "mopria-certified"))
+       printer->mopria_certified = strdup(buffer);
+    else if(!strcasecmp(attr_name, "printer-kind"))
+       printer->kind = strdup(buffer);
+    else if(!strcasecmp(attr_name, "color-supported"))
+       printer->color = strdup(buffer);
+    else if(!strcasecmp(attr_name, "printer-location"))
+       printer->note = strdup(buffer);
+    else if(!strcasecmp(attr_name, "printer-make-and-model"))
+       printer->ty = strdup(buffer);
+    else if(!strcasecmp(attr_name, "document-format-supported"))
+       printer->pdl = strdup(buffer);
+    else if(!strcasecmp(attr_name, "urf-supported"))
+       printer->ufr = strdup(buffer);
+    else if(!strcasecmp(attr_name, "media-size-supported"))
+       printer->papermax = strdup(buffer);
     /* next attribute */
     attr = ippNextAttribute(response);
   }
@@ -194,6 +209,14 @@ free_printer(ippPrinter *printer)
    free(printer->representation);
    free(printer->uuid);
    free(printer->adminurl);
+   free(printer->mopria_certified);
+   free(printer->kind);
+   free(printer->papermax);
+   free(printer->ufr);
+   free(printer->color);
+   free(printer->note);
+   free(printer->pdl);
+   free(printer->ty);
    free(printer);
    return NULL;
 }

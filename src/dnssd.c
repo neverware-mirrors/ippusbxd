@@ -230,6 +230,27 @@ void * dnssd_escl_register(void *data)
     ipp_txt = avahi_string_list_add_printf(ipp_txt, "adminurl=%s", temp);
   if (printer->uuid)
     ipp_txt = avahi_string_list_add_printf(ipp_txt, "UUID=%s", printer->uuid);
+  if (printer->mopria_certified)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "mopria-certified=%s", printer->mopria_certified);
+  if (printer->kind)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "kind=%s", printer->kind);
+  if (printer->color)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "Color=%s", printer->color);
+  if (printer->note)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "note=%s", printer->note);
+  else
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "note=");
+  if (printer->ty) {
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "ty=%s", printer->ty);
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "product=(%s)", printer->ty);
+  }
+  if (printer->pdl)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "pdl=%s", printer->pdl);
+  if (printer->ufr)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "UFR=%s", printer->ufr);
+//   if (printer->papermax)
+//     ipp_txt = avahi_string_list_add_printf(ipp_txt, "PaperMax=%s", printer->papermax);
+
   NOTE("Printer TXT[\n\tadminurl=%s\n\tUUID=%s\t\n]\n", printer->adminurl, printer->uuid);
 
  /*
@@ -305,7 +326,7 @@ void * dnssd_escl_register(void *data)
 					  (int)if_nametoindex(g_options.interface) :
 					  AVAHI_IF_UNSPEC),
 					 AVAHI_PROTO_UNSPEC, 0,
-					 scanner->ty,
+					 g_options.dnssd_data->dnssd_name,
 					 "_uscan._tcp", NULL, NULL,
 					 g_options.real_port, uscan_txt);
   if (error) {
