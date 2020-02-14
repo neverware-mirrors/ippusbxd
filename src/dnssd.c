@@ -248,8 +248,8 @@ void * dnssd_escl_register(void *data)
     ipp_txt = avahi_string_list_add_printf(ipp_txt, "pdl=%s", printer->pdl);
   if (printer->ufr)
     ipp_txt = avahi_string_list_add_printf(ipp_txt, "UFR=%s", printer->ufr);
-//   if (printer->papermax)
-//     ipp_txt = avahi_string_list_add_printf(ipp_txt, "PaperMax=%s", printer->papermax);
+  if (printer->papermax)
+     ipp_txt = avahi_string_list_add_printf(ipp_txt, "PaperMax=%s", printer->papermax);
 
   NOTE("Printer TXT[\n\tadminurl=%s\n\tUUID=%s\t\n]\n", printer->adminurl, printer->uuid);
 
@@ -361,9 +361,7 @@ int dnssd_register(AvahiClient *c)
   const char      *serial = NULL;
   const char      *cmd;
   const char      *urf = NULL;
-  char            has_duplex = 'U',
-                  has_color = 'U',
-                  has_copies = 'U';
+  char            has_duplex = 'U';
   int             pwgraster = 0,
                   appleraster = 0,
                   pclm = 0,
@@ -459,19 +457,6 @@ int dnssd_register(AvahiClient *c)
       has_duplex = 'T';
     else
       has_duplex = 'F';
-    if ((ptr = strcasestr(urf, "CP")) != NULL) {
-      ptr += 2;
-      if ((*ptr >= '2' && *ptr <= '9') ||
-	  (*ptr == '1' && *(ptr + 1) >= '0' && *(ptr + 1) <= '9'))
-	has_copies = 'T';
-      else
-	has_copies = 'F';
-    } else
-      has_copies = 'F';
-    if ((ptr = strcasestr(urf, "RGB")) != NULL)
-      has_color = 'T';
-    else
-      has_color = 'F';
   }
 
  /*
@@ -492,19 +477,9 @@ int dnssd_register(AvahiClient *c)
 
   ipp_txt = NULL;
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "rp=ipp/print");
-  ipp_txt = avahi_string_list_add_printf(ipp_txt, "ty=%s %s", make, model);
-  ipp_txt = avahi_string_list_add_printf(ipp_txt, "product=(%s)", model);
-  ipp_txt = avahi_string_list_add_printf(ipp_txt, "pdl=%s", formats);
-  ipp_txt = avahi_string_list_add_printf(ipp_txt, "Color=%c", has_color);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "Duplex=%c", has_duplex);
-  ipp_txt = avahi_string_list_add_printf(ipp_txt, "Copies=%c", has_copies);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "usb_MFG=%s", make);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "usb_MDL=%s", model);
-  if (urf)
-    ipp_txt = avahi_string_list_add_printf(ipp_txt, "URF=%s", urf);
-  else if (appleraster)
-    ipp_txt = avahi_string_list_add_printf(ipp_txt,
-                                           "URF=CP1,IS1,MT1,RS300,SRGB24,W8");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "priority=60");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "txtvers=1");
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "qtotal=1");

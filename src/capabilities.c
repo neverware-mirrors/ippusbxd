@@ -142,6 +142,91 @@ void afficher_noeud(xmlNodePtr noeud, ippScanner *ippscanner) {
     }
 }
 
+static char *get_format(int x_dim_max, int y_dim_max)
+{
+        if (x_dim_max == 0 || y_dim_max == 0) {
+                return NULL;
+        }
+
+        // Now classify by printer size
+        //                  US name      US inches   US mm           ISO mm
+        //   "legal-A4"     A, Legal     8.5 x 14    215.9 x 355.6   A4: 210 x 297
+        //   "tabloid-A3"   B, Tabloid   11 x 17     279.4 x 431.8   A3: 297 x 420
+        //   "isoC-A2"      C            17 × 22     431.8 × 558,8   A2: 420 x 594
+        //
+        // Please note, Apple in the "Bonjour Printing Specification"
+        // incorrectly states paper sizes as 9x14, 13x19 and 18x24 inches
+
+        int legal_a4_x   = 21590,
+            legal_a4_y   = 35560,
+            tabloid_a3_x = 29700,
+            tabloid_a3_y = 43180,
+            isoC_a2_x    = 43180,
+            isoC_a2_y    = 55880;
+
+        if (x_dim_max > isoC_a2_x && y_dim_max > isoC_a2_y)
+                return strdup(">isoC-A2");
+
+        if (x_dim_max >= isoC_a2_x && y_dim_max >= isoC_a2_y)
+                return strdup("isoC-A2");
+
+        if (x_dim_max >= tabloid_a3_x && y_dim_max >= tabloid_a3_y)
+                return strdup("tabloid-A3");
+
+        if (x_dim_max >= legal_a4_x && y_dim_max >= legal_a4_y)
+                return strdup("legal-A4");
+
+        return strdup("<legal-A4");
+}
+
+
+char * get_format_paper(char *val)
+{
+   int x_dim_max = 0, x_dim = 0;
+   int y_dim_max = 0, y_dim = 0;
+   if (!val) return NULL;
+   
+   while ((val = strchr(val, '{'))) {
+		   val++;
+		   char test1[255] = { 0 };
+		   char test2[255] = { 0 };
+		   
+	       char *tmp = strchr(val, '=');
+	       if (!tmp) continue;
+		   int a = strlen(val) - strlen(tmp);
+		   val+=(a + 1);
+	       
+	       tmp = strchr(val, ' ');
+	       if (!tmp) continue;
+	       a = strlen(val) - strlen(tmp);
+	       strncpy(test2, val, a);
+	       if (strchr(test2, '-') == NULL)
+			   x_dim = atoi(test2);
+		   val+=(a + 1);
+		   
+		   memset(test1, 0, 255);
+		   memset(test2, 0, 255);
+	       if (!tmp) continue;
+		   tmp = strchr(val, '=');
+		   a = strlen(val) - strlen(tmp);
+		   val+=(a + 1);
+	       
+	       if (!tmp) continue;
+	       tmp = strchr(val, '}');
+	       a = strlen(val) - strlen(tmp);
+	       strncpy(test2, val, a);
+	       if (strchr(test2, '-') == NULL)
+			   y_dim = atoi(test2);
+			   
+		   if (x_dim_max < x_dim)
+		      x_dim_max = x_dim;
+		   if (y_dim_max < y_dim)
+		      y_dim_max = y_dim;
+		   val+=(a + 1);
+   }
+   return get_format(x_dim_max, y_dim_max);
+}
+
 int
 ipp_request(ippPrinter *printer, int port)
 {
@@ -194,7 +279,7 @@ ipp_request(ippPrinter *printer, int port)
     else if(!strcasecmp(attr_name, "urf-supported"))
        printer->ufr = strdup(buffer);
     else if(!strcasecmp(attr_name, "media-size-supported"))
-       printer->papermax = strdup(buffer);
+       printer->papermax = get_format_paper(buffer);
     /* next attribute */
     attr = ippNextAttribute(response);
   }
