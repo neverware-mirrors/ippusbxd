@@ -246,8 +246,8 @@ void * dnssd_escl_register(void *data)
   }
   if (printer->pdl)
     ipp_txt = avahi_string_list_add_printf(ipp_txt, "pdl=%s", printer->pdl);
-  if (printer->ufr)
-    ipp_txt = avahi_string_list_add_printf(ipp_txt, "UFR=%s", printer->ufr);
+  if (printer->urf)
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "URF=%s", printer->urf);
   if (printer->papermax)
      ipp_txt = avahi_string_list_add_printf(ipp_txt, "PaperMax=%s", printer->papermax);
 

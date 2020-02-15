@@ -20,7 +20,7 @@ typedef struct {
   char *mopria_certified;
   char *kind;
   char *papermax;
-  char *ufr;
+  char *urf;
   char *color;
   char *pdl;
   char *note;

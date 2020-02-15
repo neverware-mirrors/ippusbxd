@@ -277,7 +277,7 @@ ipp_request(ippPrinter *printer, int port)
     else if(!strcasecmp(attr_name, "document-format-supported"))
        printer->pdl = strdup(buffer);
     else if(!strcasecmp(attr_name, "urf-supported"))
-       printer->ufr = strdup(buffer);
+       printer->urf = strdup(buffer);
     else if(!strcasecmp(attr_name, "media-size-supported"))
        printer->papermax = get_format_paper(buffer);
     /* next attribute */
@@ -297,7 +297,7 @@ free_printer(ippPrinter *printer)
    free(printer->mopria_certified);
    free(printer->kind);
    free(printer->papermax);
-   free(printer->ufr);
+   free(printer->urf);
    free(printer->color);
    free(printer->note);
    free(printer->pdl);
