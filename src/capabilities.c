@@ -268,8 +268,12 @@ ipp_request(ippPrinter *printer, int port)
        printer->mopria_certified = strdup(buffer);
     else if(!strcasecmp(attr_name, "printer-kind"))
        printer->kind = strdup(buffer);
-    else if(!strcasecmp(attr_name, "color-supported"))
-       printer->color = strdup(buffer);
+    else if(!strcasecmp(attr_name, "color-supported")) {
+       if(!strcasecmp(buffer, "true"))
+           printer->color = strdup("T");
+       else
+           printer->color = strdup("F");
+    }
     else if(!strcasecmp(attr_name, "printer-location"))
        printer->note = strdup(buffer);
     else if(!strcasecmp(attr_name, "printer-make-and-model"))
