@@ -298,6 +298,22 @@ ipp_request(ippPrinter *printer, int port)
     /* next attribute */
     attr = ippNextAttribute(response);
   }
+  if (!strcasecmp(httpGetField(http, HTTP_FIELD_CONNECTION), "close"))
+  {
+      httpClearFields(http);
+      if (httpReconnect2(http, 30000, NULL))
+      {
+          goto close_http;
+      }
+  }
+  httpClearFields(http);
+  httpSetField(http, HTTP_FIELD_AUTHORIZATION, httpGetAuthString(http));
+  httpSetField(http, HTTP_FIELD_ACCEPT_LANGUAGE, "en");
+  if (!httpHead(http, "/ipp/faxout"))
+  {
+    printer->fax = strdup("T");
+  }
+close_http:
   httpClose(http);
   return 0;
 }
@@ -318,6 +334,7 @@ free_printer(ippPrinter *printer)
    free(printer->pdl);
    free(printer->ty);
    free(printer->side);
+   free(printer->fax);
    free(printer);
    return NULL;
 }
