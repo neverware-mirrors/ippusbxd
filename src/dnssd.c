@@ -252,6 +252,10 @@ void * dnssd_escl_register(void *data)
      ipp_txt = avahi_string_list_add_printf(ipp_txt, "PaperMax=%s", printer->papermax);
   if (printer->side)
      ipp_txt = avahi_string_list_add_printf(ipp_txt, "Duplex=%s", printer->side);
+  if (printer->fax) {
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "Fax=%s", printer->fax);
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "rfo=ipp/faxout");
+  }
 
   NOTE("Printer TXT[\n\tadminurl=%s\n\tUUID=%s\t\n]\n", printer->adminurl, printer->uuid);
 
