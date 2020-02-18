@@ -17,6 +17,14 @@ typedef struct {
   char *representation;
   char *uuid;
   char *adminurl;
+  char *mopria_certified;
+  char *kind;
+  char *papermax;
+  char *urf;
+  char *color;
+  char *pdl;
+  char *note;
+  char *ty;
 } ippPrinter;
 
 int is_scanner_present(ippScanner *scanner, int port);
