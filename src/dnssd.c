@@ -250,6 +250,8 @@ void * dnssd_escl_register(void *data)
     ipp_txt = avahi_string_list_add_printf(ipp_txt, "URF=%s", printer->urf);
   if (printer->papermax)
      ipp_txt = avahi_string_list_add_printf(ipp_txt, "PaperMax=%s", printer->papermax);
+  if (printer->side)
+     ipp_txt = avahi_string_list_add_printf(ipp_txt, "Duplex=%s", printer->side);
 
   NOTE("Printer TXT[\n\tadminurl=%s\n\tUUID=%s\t\n]\n", printer->adminurl, printer->uuid);
 
@@ -361,7 +363,6 @@ int dnssd_register(AvahiClient *c)
   const char      *serial = NULL;
   const char      *cmd;
   const char      *urf = NULL;
-  char            has_duplex = 'U';
   int             pwgraster = 0,
                   appleraster = 0,
                   pclm = 0,
@@ -451,13 +452,6 @@ int dnssd_register(AvahiClient *c)
 	   (pclm ? "application/PCLm," : ""),
 	   (jpeg ? "image/jpeg," : ""));
   formats[strlen(formats) - 1] = '\0';
-  if (urf) {
-    if ((ptr = strcasestr(urf, "DM")) != NULL &&
-	*(ptr + 2) >= '1' && *(ptr + 2) <= '4')
-      has_duplex = 'T';
-    else
-      has_duplex = 'F';
-  }
 
  /*
   * Additional printer properties
@@ -477,7 +471,6 @@ int dnssd_register(AvahiClient *c)
 
   ipp_txt = NULL;
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "rp=ipp/print");
-  ipp_txt = avahi_string_list_add_printf(ipp_txt, "Duplex=%c", has_duplex);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "usb_MFG=%s", make);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "usb_MDL=%s", model);
   ipp_txt = avahi_string_list_add_printf(ipp_txt, "priority=60");
