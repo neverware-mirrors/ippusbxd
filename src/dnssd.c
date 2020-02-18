@@ -256,6 +256,8 @@ void * dnssd_escl_register(void *data)
     ipp_txt = avahi_string_list_add_printf(ipp_txt, "Fax=%s", printer->fax);
     ipp_txt = avahi_string_list_add_printf(ipp_txt, "rfo=ipp/faxout");
   }
+  else
+    ipp_txt = avahi_string_list_add_printf(ipp_txt, "Fax=F");
 
   NOTE("Printer TXT[\n\tadminurl=%s\n\tUUID=%s\t\n]\n", printer->adminurl, printer->uuid);
 
