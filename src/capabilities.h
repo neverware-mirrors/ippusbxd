@@ -25,6 +25,7 @@ typedef struct {
   char *pdl;
   char *note;
   char *ty;
+  char *side;
 } ippPrinter;
 
 int is_scanner_present(ippScanner *scanner, int port);

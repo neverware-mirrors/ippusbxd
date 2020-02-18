@@ -1,6 +1,9 @@
 #ifndef _DEFAULT_SOURCE
 # define _DEFAULT_SOURCE
 #endif
+
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -274,6 +277,14 @@ ipp_request(ippPrinter *printer, int port)
        else
            printer->color = strdup("F");
     }
+    else if(!strcasecmp(attr_name, "sides-supported")) {
+       if(!strcasestr(buffer, "two-"))
+           printer->side = strdup("T");
+       else if(!strcasestr(buffer, "one-"))
+           printer->side = strdup("F");
+       else
+           printer->side = strdup("U");
+    }
     else if(!strcasecmp(attr_name, "printer-location"))
        printer->note = strdup(buffer);
     else if(!strcasecmp(attr_name, "printer-make-and-model"))
@@ -306,6 +317,7 @@ free_printer(ippPrinter *printer)
    free(printer->note);
    free(printer->pdl);
    free(printer->ty);
+   free(printer->side);
    free(printer);
    return NULL;
 }
