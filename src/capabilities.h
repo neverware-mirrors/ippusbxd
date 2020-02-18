@@ -13,7 +13,15 @@ typedef struct {
   char *vers;
 } ippScanner;
 
-int is_scanner_present(ippScanner *scanner, const char *name);
+typedef struct {
+  char *representation;
+  char *uuid;
+  char *adminurl;
+} ippPrinter;
+
+int is_scanner_present(ippScanner *scanner, int port);
 ippScanner *free_scanner(ippScanner *scanner);
+int ipp_request(ippPrinter *printer, int port);
+ippPrinter *free_printer(ippPrinter *printer);
 
 #endif
