@@ -257,7 +257,7 @@ ipp_request(ippPrinter *printer, int port)
   /* Print the attributes received from the IPP printer */
   attr = ippFirstAttribute(response);
   while (attr) {
-    /* Ponvert IPP attribute's value to string */
+    /* Convert IPP attribute's value to string */
     ippAttributeString(attr, buffer, sizeof(buffer));
     char *attr_name = (char*)ippGetName(attr);
     if (!attr_name) continue;
@@ -278,9 +278,9 @@ ipp_request(ippPrinter *printer, int port)
            printer->color = strdup("F");
     }
     else if(!strcasecmp(attr_name, "sides-supported")) {
-       if(!strcasestr(buffer, "two-"))
+       if(strcasestr(buffer, "two-"))
            printer->side = strdup("T");
-       else if(!strcasestr(buffer, "one-"))
+       else if(strcasestr(buffer, "one-"))
            printer->side = strdup("F");
        else
            printer->side = strdup("U");
