@@ -31,6 +31,8 @@
 
 #define IGNORE(x) (void)(x)
 
+#define le16_to_cpu(x) libusb_cpu_to_le16(libusb_cpu_to_le16(x))
+
 static int bus, dev_addr;
 
 static int is_ippusb_interface(const struct libusb_interface_descriptor *interf)

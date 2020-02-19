@@ -1,6 +1,6 @@
 # IPPUSBXD [![Coverity analysis status](https://scan.coverity.com/projects/2634/badge.svg)](https://scan.coverity.com/projects/2634)
 
-Version 1.33
+Version 1.34
 
 ## About
 
@@ -36,14 +36,14 @@ libavahi-common, and libavahi-client installed along with cmake.
 
 Under Ubuntu and Debian:
 ```
-sudo apt-get install libusb-1.0-0-dev libavahi-common-dev libavahi-client-dev cmake
+sudo apt-get install libusb-1.0-0-dev libavahi-common-dev libavahi-client-dev libcups2-dev libxml2-dev cmake
 ```
 
 Under Fedora:
 ```
 sudo yum install libusbx-devel.* cmake
 ```
-Install also the *-devel packages of libavahi-common and libavahi-client
+Install also the *-devel packages of  libxml2, cups, libavahi-common and libavahi-client
 
 Once the dependencies are installed simply run:
 ```

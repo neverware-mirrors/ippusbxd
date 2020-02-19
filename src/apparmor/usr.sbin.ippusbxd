@@ -4,13 +4,13 @@
 
 #include <tunables/global>
 
-/usr/sbin/ippusbxd {
+profile ippusbxd /usr/{bin,sbin}/ippusbxd {
   #include <abstractions/base>
   #include <abstractions/dbus>
 
   capability wake_alarm,
 
-  /usr/sbin/ippusbxd mr,
+  /usr/{bin,sbin}/ippusbxd mr,
 
   # Scanning for USB devices
   /dev/bus/usb/ r,
