@@ -7,6 +7,7 @@ Build-Depends: debhelper-compat (= 12),
                libusb-1.0-0-dev,
                libavahi-common-dev,
                libavahi-client-dev,
+               libxml2-dev,
                cmake,
                pkg-config,
                dh-apparmor
